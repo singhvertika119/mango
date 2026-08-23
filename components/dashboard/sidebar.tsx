@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -170,34 +171,36 @@ export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCo
                 <ChevronsUpDown className="w-4 h-4 text-muted-foreground shrink-0" />
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-56 align-start" side="bottom" align="start">
-                <DropdownMenuLabel className="text-xs text-muted-foreground font-semibold px-2 py-1.5">
-                  Workspaces
-                </DropdownMenuLabel>
-                {workspaces.map((ws) => (
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="text-xs text-muted-foreground font-semibold px-2 py-1.5">
+                    Workspaces
+                  </DropdownMenuLabel>
+                  {workspaces.map((ws) => (
+                    <DropdownMenuItem
+                      key={ws.id}
+                      onClick={() => handleSwitchWorkspace(ws)}
+                      className={cn(
+                        "flex items-center gap-2 cursor-pointer",
+                        activeWorkspace.id === ws.id && "bg-accent font-medium text-accent-foreground"
+                      )}
+                    >
+                      <div className="flex items-center justify-center w-6 h-6 rounded bg-primary/10 text-primary text-xs font-semibold shrink-0">
+                        {getInitials(ws.name)}
+                      </div>
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <span className="text-sm truncate">{ws.name}</span>
+                      </div>
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    key={ws.id}
-                    onClick={() => handleSwitchWorkspace(ws)}
-                    className={cn(
-                      "flex items-center gap-2 cursor-pointer",
-                      activeWorkspace.id === ws.id && "bg-accent font-medium text-accent-foreground"
-                    )}
+                    onClick={() => setDialogOpen(true)}
+                    className="flex items-center gap-2 cursor-pointer text-primary"
                   >
-                    <div className="flex items-center justify-center w-6 h-6 rounded bg-primary/10 text-primary text-xs font-semibold shrink-0">
-                      {getInitials(ws.name)}
-                    </div>
-                    <div className="flex flex-col min-w-0 flex-1">
-                      <span className="text-sm truncate">{ws.name}</span>
-                    </div>
+                    <Plus className="w-4 h-4" />
+                    <span className="text-sm">Create Workspace</span>
                   </DropdownMenuItem>
-                ))}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => setDialogOpen(true)}
-                  className="flex items-center gap-2 cursor-pointer text-primary"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span className="text-sm">Create Workspace</span>
-                </DropdownMenuItem>
+                </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
@@ -281,29 +284,31 @@ export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCo
                 </div>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-56" align="end" side="top">
-                <DropdownMenuLabel className="font-normal">
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">User Profile</p>
-                    <p className="text-xs leading-none text-muted-foreground">{userEmail}</p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="cursor-pointer gap-2">
-                  <User className="w-4 h-4" />
-                  <span>My Profile</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem className="cursor-pointer gap-2">
-                  <Sparkles className="w-4 h-4" />
-                  <span>Upgrade Plan</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={handleLogout}
-                  className="cursor-pointer gap-2 text-destructive focus:bg-destructive/10 focus:text-destructive"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span>Log Out</span>
-                </DropdownMenuItem>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">User Profile</p>
+                      <p className="text-xs leading-none text-muted-foreground">{userEmail}</p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="cursor-pointer gap-2">
+                    <User className="w-4 h-4" />
+                    <span>My Profile</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="cursor-pointer gap-2">
+                    <Sparkles className="w-4 h-4" />
+                    <span>Upgrade Plan</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={handleLogout}
+                    className="cursor-pointer gap-2 text-destructive focus:bg-destructive/10 focus:text-destructive"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Log Out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
