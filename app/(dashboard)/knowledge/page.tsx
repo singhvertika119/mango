@@ -32,6 +32,13 @@ import {
   getLinksAction, createLinkAction, deleteLinkAction,
   getCodeSnippetsAction, createCodeSnippetAction, deleteCodeSnippetAction
 } from "@/app/actions/knowledge";
+import {
+  getDocumentsAction,
+  uploadDocumentAction,
+  deleteDocumentAction
+} from "@/app/actions/document";
+import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface Project {
   id: string;
@@ -69,9 +76,14 @@ export default function KnowledgePage() {
   const [notes, setNotes] = React.useState<Note[]>([]);
   const [links, setLinks] = React.useState<LinkItem[]>([]);
   const [snippets, setSnippets] = React.useState<CodeSnippet[]>([]);
+  const [documents, setDocuments] = React.useState<any[]>([]);
   const [projects, setProjects] = React.useState<Project[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+
+  // Document Upload State
+  const [uploadFile, setUploadFile] = React.useState<File | null>(null);
+  const [uploading, setUploading] = React.useState(false);
 
   // Dialog & Form State
   const [activeTab, setActiveTab] = React.useState("notes");
@@ -127,6 +139,12 @@ export default function KnowledgePage() {
       setSnippets(snipsRes.snippets as CodeSnippet[]);
     }
 
+    // Fetch Documents
+    const docsRes = await getDocumentsAction(workspaceId);
+    if (docsRes.success && docsRes.documents) {
+      setDocuments(docsRes.documents);
+    }
+
     setLoading(false);
   }, [workspaceId]);
 
@@ -173,7 +191,7 @@ export default function KnowledgePage() {
     }
   };
 
-  const handleDelete = async (id: string, type: "note" | "link" | "snippet") => {
+  const handleDelete = async (id: string, type: "note" | "link" | "snippet" | "document") => {
     if (type === "note") {
       setNotes((prev) => prev.filter((n) => n.id !== id));
       await deleteNoteAction(id);
@@ -183,6 +201,33 @@ export default function KnowledgePage() {
     } else if (type === "snippet") {
       setSnippets((prev) => prev.filter((s) => s.id !== id));
       await deleteCodeSnippetAction(id);
+    } else if (type === "document") {
+      setDocuments((prev) => prev.filter((d) => d.id !== id));
+      await deleteDocumentAction(id);
+    }
+  };
+
+  const handleUploadDocument = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!workspaceId || !selectedProjectId || !uploadFile) return;
+
+    setUploading(true);
+    setError(null);
+    const formData = new FormData();
+    formData.append("workspaceId", workspaceId);
+    formData.append("projectId", selectedProjectId);
+    formData.append("file", uploadFile);
+
+    const res = await uploadDocumentAction(formData);
+    setUploading(false);
+
+    if (res.success) {
+      setUploadFile(null);
+      const fileInput = document.getElementById("docFile") as HTMLInputElement;
+      if (fileInput) fileInput.value = "";
+      fetchData();
+    } else {
+      setError(res.error || "Failed to upload document.");
     }
   };
 
@@ -406,16 +451,122 @@ export default function KnowledgePage() {
         </TabsContent>
 
         {/* 4. DOCUMENTS TAB */}
-        <TabsContent value="documents" className="space-y-4 outline-none">
-          <div className="flex flex-col items-center justify-center p-12 border border-dashed border-border rounded-xl bg-card text-card-foreground">
-            <FileText className="w-12 h-12 text-primary stroke-1" />
-            <h3 className="mt-4 text-sm font-bold flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4 fill-current text-primary" />
-              <span>Documents parsing setup</span>
-            </h3>
-            <p className="text-xs text-muted-foreground mt-1 max-w-xs text-center leading-relaxed">
-              PDF, Markdown, and TXT parsing, Supabase Storage uploads, and 384-dimensional vector embedding integrations will be hooked up in Phase 6.
-            </p>
+        <TabsContent value="documents" className="space-y-6 outline-none">
+          <div className="grid gap-6 md:grid-cols-3">
+            {/* Uploader Card */}
+            <Card className="border-border bg-card/60 h-fit">
+              <CardHeader className="p-4">
+                <CardTitle className="text-sm font-bold">Upload Document</CardTitle>
+                <CardDescription>Upload PDF, MD, or TXT knowledge files for parsing.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <form onSubmit={handleUploadDocument} className="space-y-4">
+                  {projects.length === 0 ? (
+                    <div className="text-xs text-amber-600 bg-amber-500/10 p-3 rounded-lg border border-solid border-amber-500/20 leading-relaxed">
+                      ⚠️ No projects found in this workspace. Please create a project in the <strong>Projects</strong> tab before uploading documents.
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="docProj">Project</Label>
+                      <select
+                        id="docProj"
+                        value={selectedProjectId}
+                        onChange={(e) => setSelectedProjectId(e.target.value)}
+                        className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-xs outline-hidden"
+                      >
+                        {projects.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="docFile">Select File</Label>
+                    <Input
+                      id="docFile"
+                      type="file"
+                      accept=".pdf,.txt,.md,.docx"
+                      onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                      disabled={projects.length === 0}
+                      required
+                    />
+                  </div>
+
+                  <Button type="submit" className="w-full cursor-pointer" disabled={uploading || !uploadFile || projects.length === 0}>
+                    {uploading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        <span>Uploading...</span>
+                      </>
+                    ) : (
+                      <span>Upload & Parse</span>
+                    )}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+
+            {/* Documents List */}
+            <div className="md:col-span-2 space-y-4">
+              {loading ? (
+                <div className="h-32 bg-accent animate-pulse rounded-lg" />
+              ) : documents.length === 0 ? (
+                <div className="flex flex-col items-center justify-center p-12 border border-dashed border-border rounded-xl bg-card text-card-foreground">
+                  <FileText className="w-12 h-12 text-muted-foreground stroke-1" />
+                  <h3 className="mt-4 text-sm font-semibold">No documents uploaded</h3>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-xs text-center">
+                    Upload specifications or API blueprints to embed knowledge for vector RAG query processing.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-4">
+                  {documents.map((doc) => {
+                    const proj = projects.find((p) => p.id === doc.project_id);
+                    return (
+                      <Card key={doc.id} className="border-border bg-card group relative p-4 flex items-center justify-between">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 text-primary shrink-0">
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="text-sm font-bold truncate max-w-xs md:max-w-md">{doc.title}</h4>
+                            <div className="flex items-center gap-2 mt-1">
+                              {proj && <span className="text-[10px] text-muted-foreground font-semibold">{proj.name}</span>}
+                              <span className="text-[9px] font-mono bg-accent px-1.5 py-0.5 rounded uppercase font-semibold">
+                                {doc.type}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          {/* Status Badge */}
+                          <span className={cn(
+                            "text-[9px] font-bold px-2 py-0.5 rounded-full capitalize",
+                            doc.status === "completed" && "bg-emerald-500/10 text-emerald-600",
+                            doc.status === "processing" && "bg-blue-500/10 text-blue-600",
+                            doc.status === "pending" && "bg-amber-500/10 text-amber-600",
+                            doc.status === "failed" && "bg-rose-500/10 text-rose-600"
+                          )}>
+                            {doc.status}
+                          </span>
+
+                          <button
+                            onClick={() => handleDelete(doc.id, "document")}
+                            className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer p-0.5"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </TabsContent>
       </Tabs>
