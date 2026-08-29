@@ -15,6 +15,10 @@ export interface AgentMessage {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
+  metadata?: {
+    hasPendingApproval?: boolean;
+    approvalId?: string;
+  };
   created_at: string;
 }
 
@@ -118,6 +122,11 @@ export async function getAgentMessagesAction(sessionId: string) {
   }
 }
 
+import { runAgentLoop } from "@/lib/agent/controller";
+import { executeAgentTool } from "@/lib/agent/executor";
+import { verifyToolExecution } from "@/lib/agent/verifier";
+import { mockApprovals } from "@/lib/agent/approvals";
+
 export async function sendAgentMessageAction(
   workspaceId: string,
   projectId: string,
@@ -127,65 +136,43 @@ export async function sendAgentMessageAction(
   if (!userText.trim()) return { success: false, error: "Empty message." };
 
   try {
-    // 1. Gather Project Brain Context
-    const brain = await compileProjectBrainContext(workspaceId, projectId, userText);
-
-    // 2. Build the LLM System Prompt
-    const systemPrompt = `You are a helpful, context-aware Workspace Agent. You have access to the user's project data, tasks, activity logs, and vector-search document chunks. Answer the user's query clearly and accurately using the context below. If you do not know the answer, say so. Do not make up facts.
-
-=========================================
-PROJECT SUMMARY:
-${brain.summary}
-
-=========================================
-PROJECT CHEATSHEETS & FACTS (NOTES/SNIPPETS/LINKS):
-${brain.knowledgeFacts}
-
-=========================================
-PROJECT ACTIVE TASKS:
-${brain.tasksContext}
-
-=========================================
-RECENT PROJECT WORK ACTIVITY LOG:
-${brain.recentActivity}
-
-=========================================
-RELEVANT RAG DOCUMENT CHUNKS:
-${brain.semanticContext}
-=========================================`;
-
     if (!isSupabaseConfigured) {
-      // Mock Response Generation
-      const userMsg: AgentMessage = {
+      // Mock Agent execution loop
+      const tempUserMsg: AgentMessage = {
         id: `msg-user-${Date.now()}`,
         role: "user",
         content: userText,
         created_at: new Date().toISOString()
       };
       
-      const assistantResponse = await chatCompletion([
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userText }
-      ]);
+      const controllerResult = await runAgentLoop(
+        workspaceId,
+        projectId,
+        sessionId,
+        tempUserMsg.id,
+        userText,
+        "mock-user-id",
+        "mock-user@mango.com"
+      );
 
       const assistantMsg: AgentMessage = {
         id: `msg-asst-${Date.now()}`,
         role: "assistant",
-        content: assistantResponse,
+        content: controllerResult.response,
         created_at: new Date().toISOString()
       };
 
       if (!mockMessages[sessionId]) mockMessages[sessionId] = [];
-      mockMessages[sessionId].push(userMsg, assistantMsg);
+      mockMessages[sessionId].push(tempUserMsg, assistantMsg);
 
-      return { success: true, messages: [userMsg, assistantMsg] };
+      return { success: true, messages: [tempUserMsg, assistantMsg] };
     }
 
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Unauthorized");
 
-    // 3. Save User Message to Database
+    // 1. Save User Message to Database
     const { data: userMsg, error: userMsgErr } = await supabase
       .from("agent_messages")
       .insert({
@@ -198,35 +185,28 @@ ${brain.semanticContext}
 
     if (userMsgErr) throw userMsgErr;
 
-    // 4. Fetch Chat History (limit to last 15 messages to keep payload light)
-    const { data: history, error: historyErr } = await supabase
-      .from("agent_messages")
-      .select("role, content")
-      .eq("session_id", sessionId)
-      .order("created_at", { ascending: true })
-      .limit(15);
+    // 2. Call the Agent Controller loop
+    const controllerResult = await runAgentLoop(
+      workspaceId,
+      projectId,
+      sessionId,
+      userMsg.id,
+      userText,
+      user.id,
+      user.email || ""
+    );
 
-    if (historyErr) throw historyErr;
-
-    // 5. Structure API payload
-    const apiMessages: ChatMessage[] = [
-      { role: "system", content: systemPrompt },
-      ...(history?.map(h => ({
-        role: h.role as "user" | "assistant" | "system",
-        content: h.content
-      })) || [])
-    ];
-
-    // 6. Call Groq
-    const assistantContent = await chatCompletion(apiMessages);
-
-    // 7. Save Assistant Message to Database
+    // 3. Save Assistant Message to Database
     const { data: assistantMsg, error: asstMsgErr } = await supabase
       .from("agent_messages")
       .insert({
         session_id: sessionId,
         role: "assistant",
-        content: assistantContent
+        content: controllerResult.response,
+        metadata: {
+          hasPendingApproval: controllerResult.hasPendingApproval,
+          approvalId: controllerResult.approvalId
+        }
       })
       .select()
       .single();
@@ -237,6 +217,170 @@ ${brain.semanticContext}
     return { success: true, messages: [userMsg, assistantMsg] };
   } catch (err: any) {
     console.error("sendAgentMessageAction failed:", err);
-    return { success: false, error: err.message || "Failed to process chat message." };
+    return { success: false, error: err.message || "Failed to process agent execution loop." };
+  }
+}
+
+// ==========================================
+// 3. Approval Resolving Action
+// ==========================================
+export async function resolveApprovalAction(
+  approvalId: string,
+  status: "APPROVED" | "REJECTED"
+) {
+  try {
+    if (!isSupabaseConfigured) {
+      const appRecord = mockApprovals.find(a => a.id === approvalId);
+      if (!appRecord) throw new Error("Approval record not found.");
+      appRecord.status = status;
+
+      let assistantText = "";
+      if (status === "APPROVED") {
+        const toolResult = await executeAgentTool(
+          { name: appRecord.tool_name, arguments: appRecord.parameters },
+          appRecord.workspace_id,
+          appRecord.project_id
+        );
+        assistantText = `✅ **Action Approved and Executed!**\n\nExecution Result Output:\n\`\`\`json\n${JSON.stringify(toolResult, null, 2)}\n\`\`\``;
+        appRecord.status = "EXECUTED";
+      } else {
+        assistantText = `❌ **Action Rejected.** The drafted action was cancelled.`;
+      }
+
+      const asstMsg: AgentMessage = {
+        id: `msg-asst-resol-${Date.now()}`,
+        role: "assistant",
+        content: assistantText,
+        created_at: new Date().toISOString()
+      };
+
+      if (!mockMessages[appRecord.agent_session_id]) mockMessages[appRecord.agent_session_id] = [];
+      mockMessages[appRecord.agent_session_id].push(asstMsg);
+
+      return { success: true, messages: [asstMsg] };
+    }
+
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Unauthorized");
+
+    // 1. Fetch approval details
+    const { data: approval, error: fetchErr } = await supabase
+      .from("approvals")
+      .select("*")
+      .eq("id", approvalId)
+      .single();
+
+    if (fetchErr || !approval) throw new Error("Approval request not found.");
+    if (approval.status !== "PENDING") throw new Error("Approval request has already been resolved.");
+
+    // 2. Update statuses
+    const resolvedStatus = status === "APPROVED" ? "APPROVED" : "REJECTED";
+    
+    const { error: appUpdateErr } = await supabase
+      .from("approvals")
+      .update({
+        status: resolvedStatus,
+        resolved_at: new Date().toISOString(),
+        resolved_by: user.id
+      })
+      .eq("id", approvalId);
+
+    if (appUpdateErr) throw appUpdateErr;
+
+    const { error: actUpdateErr } = await supabase
+      .from("agent_actions")
+      .update({
+        status: status === "APPROVED" ? "approved" : "rejected"
+      })
+      .eq("id", approval.agent_action_id);
+
+    if (actUpdateErr) throw actUpdateErr;
+
+    let responseMessageText = "";
+
+    // 3. If approved, execute tool call and verification
+    if (status === "APPROVED") {
+      try {
+        const output = await executeAgentTool(
+          { name: approval.tool_name, arguments: approval.parameters },
+          approval.workspace_id,
+          approval.project_id
+        );
+
+        const verification = await verifyToolExecution(approval.tool_name, output, approval.parameters);
+
+        // Update action status to executed
+        await supabase
+          .from("agent_actions")
+          .update({
+            status: "executed",
+            result: output
+          })
+          .eq("id", approval.agent_action_id);
+
+        // Update approval to EXECUTED
+        await supabase
+          .from("approvals")
+          .update({
+            status: "EXECUTED",
+            result: output
+          })
+          .eq("id", approvalId);
+
+        // Log to activities timeline
+        await supabase
+          .from("activities")
+          .insert({
+            workspace_id: approval.workspace_id,
+            project_id: approval.project_id,
+            user_id: user.id,
+            action: `Approved and executed agent action: ${approval.tool_name}`,
+            entity_type: "agent_action",
+            entity_id: approval.agent_action_id
+          });
+
+        responseMessageText = `✅ **Action Approved and Executed!**\n\nExecution Result:\n\`\`\`json\n${JSON.stringify(output, null, 2)}\n\`\`\`\n\n*Verification status:* ${verification.verified ? "VERIFIED" : "UNVERIFIED"} (${verification.message})`;
+      } catch (execErr: any) {
+        await supabase
+          .from("agent_actions")
+          .update({
+            status: "failed",
+            result: { error: execErr.message }
+          })
+          .eq("id", approval.agent_action_id);
+
+        await supabase
+          .from("approvals")
+          .update({
+            status: "FAILED"
+          })
+          .eq("id", approvalId);
+
+        responseMessageText = `⚠️ **Action Execution Failed:** ${execErr.message}`;
+      }
+    } else {
+      // REJECTED
+      responseMessageText = `❌ **Action Rejected.** The drafted action was cancelled by the user.`;
+    }
+
+    // 4. Save response assistant message
+    const { data: assistantMsg, error: asstMsgErr } = await supabase
+      .from("agent_messages")
+      .insert({
+        session_id: approval.agent_session_id,
+        role: "assistant",
+        content: responseMessageText
+      })
+      .select()
+      .single();
+
+    if (asstMsgErr) throw asstMsgErr;
+
+    revalidatePath("/agent");
+    return { success: true, messages: [assistantMsg] };
+  } catch (err: any) {
+    console.error("resolveApprovalAction failed:", err);
+    return { success: false, error: err.message || "Failed to resolve approval request." };
   }
 }

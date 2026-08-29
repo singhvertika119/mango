@@ -27,6 +27,7 @@ import {
   createAgentSessionAction,
   getAgentMessagesAction,
   sendAgentMessageAction,
+  resolveApprovalAction,
   AgentSession,
   AgentMessage
 } from "@/app/actions/agent";
@@ -173,6 +174,29 @@ export default function AgentPage() {
       });
     } else {
       setError(res.error || "Failed to generate AI response.");
+    }
+  };
+
+  const [resolvingApprovalId, setResolvingApprovalId] = React.useState<string | null>(null);
+
+  const handleResolveApproval = async (approvalId: string, status: "APPROVED" | "REJECTED") => {
+    setResolvingApprovalId(approvalId);
+    try {
+      const res = await resolveApprovalAction(approvalId, status);
+      if (res.success && res.messages) {
+        setMessages((prev) => [...prev, ...res.messages!]);
+      }
+    } catch (err) {
+      console.error("Failed to resolve approval:", err);
+    } finally {
+      setResolvingApprovalId(null);
+      // Reload messages to update statuses
+      if (activeSession) {
+        const msgsRes = await getAgentMessagesAction(activeSession.id);
+        if (msgsRes.success && msgsRes.messages) {
+          setMessages(msgsRes.messages);
+        }
+      }
     }
   };
 
@@ -326,13 +350,40 @@ export default function AgentPage() {
                       {isAgent ? <Bot className="w-3.5 h-3.5" /> : <UserIcon className="w-3.5 h-3.5" />}
                     </div>
 
-                    <div className={cn(
-                      "p-3.5 rounded-2xl text-xs leading-relaxed font-medium whitespace-pre-line shadow-xs border border-solid",
-                      isAgent
-                        ? "bg-card border-border text-foreground rounded-tl-xs"
-                        : "bg-primary border-primary/20 text-primary-foreground rounded-tr-xs"
-                    )}>
-                      {msg.content}
+                    <div className="flex flex-col gap-2">
+                      <div className={cn(
+                        "p-3.5 rounded-2xl text-xs leading-relaxed font-medium whitespace-pre-line shadow-xs border border-solid",
+                        isAgent
+                          ? "bg-card border-border text-foreground rounded-tl-xs"
+                          : "bg-primary border-primary/20 text-primary-foreground rounded-tr-xs"
+                      )}>
+                        {msg.content}
+                      </div>
+
+                      {isAgent && msg.metadata?.hasPendingApproval && msg.metadata?.approvalId && (
+                        <div className="flex items-center gap-2 mt-1 px-1">
+                          <Button
+                            size="sm"
+                            onClick={() => handleResolveApproval(msg.metadata!.approvalId!, "APPROVED")}
+                            disabled={resolvingApprovalId !== null}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold cursor-pointer h-7 text-[10px] px-3.5 rounded-md shadow-sm"
+                          >
+                            {resolvingApprovalId === msg.metadata.approvalId ? (
+                              <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                            ) : null}
+                            <span>Approve Action</span>
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleResolveApproval(msg.metadata!.approvalId!, "REJECTED")}
+                            disabled={resolvingApprovalId !== null}
+                            className="font-semibold cursor-pointer h-7 text-[10px] px-3.5 rounded-md"
+                          >
+                            <span>Reject</span>
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
