@@ -2,11 +2,17 @@
 
 import * as React from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Bell, Search, Sparkles, Sun, Moon, Check, Inbox, CheckCircle2, AlertTriangle, AlertCircle, Info, ArrowRight } from "lucide-react";
+import { Bell, Search, Sparkles, Sun, Moon, Check, Inbox, CheckCircle2, AlertTriangle, AlertCircle, Info, ArrowRight, FileText, CheckSquare, LayoutDashboard, FolderKanban, BookOpen, MessageSquareCode, Settings, Puzzle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import { getNotificationsAction, markNotificationAsReadAction, Notification } from "@/app/actions/notifications";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export function Topbar() {
   const searchParams = useSearchParams();
@@ -16,6 +22,81 @@ export function Topbar() {
   
   const [workspaceName, setWorkspaceName] = React.useState("Workspace");
   const [theme, setTheme] = React.useState<"light" | "dark">("light");
+
+  // Command Palette Search State
+  const [paletteOpen, setPaletteOpen] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [searchResults, setSearchResults] = React.useState<{
+    tasks: { id: string; title: string; status: string }[];
+    docs: { id: string; name: string }[];
+  }>({ tasks: [], docs: [] });
+  const [searching, setSearching] = React.useState(false);
+
+  // Global key listener to trigger Command Palette (Ctrl+K or Cmd+K)
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        setPaletteOpen(prev => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Async query tasks and documents when query input changes
+  React.useEffect(() => {
+    if (!paletteOpen) {
+      setSearchQuery("");
+      setSearchResults({ tasks: [], docs: [] });
+      return;
+    }
+
+    if (!searchQuery.trim() || !workspaceId) {
+      setSearchResults({ tasks: [], docs: [] });
+      return;
+    }
+
+    const delayDebounce = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const { data: tasksData } = await supabase
+          .from("tasks")
+          .select("id, title, status")
+          .eq("workspace_id", workspaceId)
+          .ilike("title", `%${searchQuery}%`)
+          .limit(5);
+
+        const { data: docsData } = await supabase
+          .from("documents")
+          .select("id, name")
+          .eq("workspace_id", workspaceId)
+          .ilike("name", `%${searchQuery}%`)
+          .limit(5);
+
+        setSearchResults({
+          tasks: (tasksData as any) || [],
+          docs: (docsData as any) || []
+        });
+      } catch (e) {
+        console.error("Search query failed:", e);
+      } finally {
+        setSearching(false);
+      }
+    }, 200);
+
+    return () => clearTimeout(delayDebounce);
+  }, [searchQuery, paletteOpen, workspaceId, supabase]);
+
+  const defaultNavs = [
+    { name: "Go to Dashboard", href: `/dashboard?workspaceId=${workspaceId}`, icon: LayoutDashboard },
+    { name: "Go to Projects", href: `/projects?workspaceId=${workspaceId}`, icon: FolderKanban },
+    { name: "Go to Tasks", href: `/tasks?workspaceId=${workspaceId}`, icon: CheckSquare },
+    { name: "Go to Knowledge Base", href: `/knowledge?workspaceId=${workspaceId}`, icon: BookOpen },
+    { name: "Go to Agent Console", href: `/agent?workspaceId=${workspaceId}`, icon: MessageSquareCode },
+    { name: "Go to Integrations", href: `/integrations?workspaceId=${workspaceId}`, icon: Puzzle },
+    { name: "Go to Settings", href: `/settings?workspaceId=${workspaceId}`, icon: Settings },
+  ];
 
   // Notifications State
   const [notifications, setNotifications] = React.useState<Notification[]>([]);
@@ -91,18 +172,23 @@ export function Topbar() {
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
   return (
-    <header className="flex items-center justify-between h-14 border-b border-border px-6 bg-card/40 shrink-0 select-none">
+    <>
+      <header className="flex items-center justify-between h-14 border-b border-border px-6 bg-card/40 shrink-0 select-none">
       {/* Search Bar / Workspace Title */}
       <div className="flex items-center gap-4">
         <span className="text-sm font-bold tracking-tight text-foreground bg-accent border border-border border-solid px-2.5 py-1 rounded-lg">
           {workspaceName}
         </span>
-        <div className="relative w-64 hidden sm:block">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <div 
+          onClick={() => setPaletteOpen(true)}
+          className="relative w-64 hidden sm:block cursor-pointer group"
+        >
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
           <Input
             type="text"
+            readOnly
             placeholder="Search files, tasks, settings..."
-            className="pl-9 h-8 text-xs bg-accent/30 border-border placeholder:text-muted-foreground focus-visible:ring-primary/20"
+            className="pl-9 h-8 text-xs bg-accent/30 border-border placeholder:text-muted-foreground focus-visible:ring-primary/20 cursor-pointer pointer-events-none"
           />
           <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-muted-foreground bg-accent border border-border px-1.5 py-0.5 rounded pointer-events-none">
             Ctrl K
@@ -231,5 +317,110 @@ export function Topbar() {
         )}
       </div>
     </header>
+
+    {/* Command Palette Search Dialog */}
+    <Dialog open={paletteOpen} onOpenChange={setPaletteOpen}>
+      <DialogContent className="max-w-xl p-0 overflow-hidden border-border bg-card shadow-2xl">
+        <div className="flex items-center border-b border-solid border-border px-4 py-3 gap-3">
+          <Search className="w-5 h-5 text-muted-foreground shrink-0" />
+          <input
+            type="text"
+            placeholder="Search files, tasks, workspace settings..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="flex-1 bg-transparent border-0 text-sm outline-none placeholder:text-muted-foreground text-foreground"
+            autoFocus
+          />
+          {searching && <Loader2 className="w-4 h-4 animate-spin text-primary shrink-0" />}
+        </div>
+
+        <div className="max-h-96 overflow-y-auto p-2 text-xs space-y-4">
+          {/* If query is empty, show default navigation shortcuts */}
+          {!searchQuery.trim() ? (
+            <div className="space-y-1.5">
+              <div className="px-2.5 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Navigation Shortcuts</div>
+              <div className="space-y-0.5">
+                {defaultNavs.map((nav, idx) => {
+                  const Icon = nav.icon;
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setPaletteOpen(false);
+                        router.push(nav.href);
+                      }}
+                      className="flex items-center gap-3 w-full text-left px-2.5 py-2 rounded-lg text-foreground hover:bg-accent cursor-pointer bg-transparent border-0 text-xs font-semibold"
+                    >
+                      <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <span>{nav.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            /* Search results matching query */
+            <div className="space-y-4">
+              {/* Match Tasks */}
+              {searchResults.tasks.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="px-2.5 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Matched Tasks</div>
+                  <div className="space-y-0.5">
+                    {searchResults.tasks.map((task) => (
+                      <button
+                        key={task.id}
+                        onClick={() => {
+                          setPaletteOpen(false);
+                          router.push(`/tasks?workspaceId=${workspaceId}&taskId=${task.id}`);
+                        }}
+                        className="flex items-center gap-3 w-full text-left px-2.5 py-2 rounded-lg text-foreground hover:bg-accent cursor-pointer bg-transparent border-0 text-xs font-semibold justify-between"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <CheckSquare className="w-4 h-4 text-muted-foreground shrink-0" />
+                          <span className="truncate text-foreground">{task.title}</span>
+                        </div>
+                        <span className="text-[9px] font-bold uppercase border border-solid border-border px-1.5 py-0.5 rounded bg-accent text-muted-foreground tracking-wide shrink-0">
+                          {task.status}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Match Documents */}
+              {searchResults.docs.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="px-2.5 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Matched Documents</div>
+                  <div className="space-y-0.5">
+                    {searchResults.docs.map((doc) => (
+                      <button
+                        key={doc.id}
+                        onClick={() => {
+                          setPaletteOpen(false);
+                          router.push(`/knowledge?workspaceId=${workspaceId}`);
+                        }}
+                        className="flex items-center gap-3 w-full text-left px-2.5 py-2 rounded-lg text-foreground hover:bg-accent cursor-pointer bg-transparent border-0 text-xs font-semibold"
+                      >
+                        <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span className="truncate text-foreground">{doc.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* No items matched */}
+              {searchResults.tasks.length === 0 && searchResults.docs.length === 0 && (
+                <div className="text-center py-6 text-muted-foreground font-semibold">
+                  <span>No results matched "{searchQuery}"</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

@@ -20,6 +20,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getDashboardDataAction } from "@/app/actions/dashboard";
+import { createClient } from "@/lib/supabase/client";
 
 const mockInsights = [
   { id: 1, title: "Database Performance Boost", text: "Create an index on workspace_members(profile_id) to improve query response times by up to 40%." },
@@ -52,6 +53,28 @@ export default function DashboardPage() {
   const [activities, setActivities] = React.useState<Activity[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [userName, setUserName] = React.useState("Developer");
+
+  React.useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (user) {
+        try {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("id", user.id)
+            .single();
+          if (profile?.full_name) {
+            const firstName = profile.full_name.split(" ")[0];
+            setUserName(firstName);
+          }
+        } catch (e) {
+          console.error("Failed to load user name:", e);
+        }
+      }
+    });
+  }, []);
 
   const loadData = React.useCallback(async () => {
     if (!workspaceId) return;
@@ -97,7 +120,7 @@ export default function DashboardPage() {
       {/* Welcome Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 bg-linear-to-r from-primary/10 via-primary/5 to-card rounded-2xl border border-primary/10 border-solid shadow-xs">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Welcome back, Developer!</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Welcome back, {userName}!</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Workspace Mango is active. The AI project agent is ready to assist you.
           </p>
@@ -106,10 +129,6 @@ export default function DashboardPage() {
           <Button size="sm" className="gap-2 cursor-pointer text-xs font-semibold h-9" onClick={() => router.push(`/tasks?workspaceId=${workspaceId}`)}>
             <Plus className="w-4 h-4" />
             <span>Manage Tasks</span>
-          </Button>
-          <Button size="sm" variant="outline" className="gap-2 border-primary/20 bg-background cursor-pointer text-xs font-semibold h-9" onClick={() => router.push(`/agent?workspaceId=${workspaceId}`)}>
-            <Play className="w-4 h-4 fill-primary text-primary" />
-            <span>Resume Agent Chat</span>
           </Button>
         </div>
       </div>
@@ -203,15 +222,6 @@ export default function DashboardPage() {
               <CardTitle className="text-sm font-bold">Workspace Activity Log</CardTitle>
               <CardDescription className="text-xs">Audits of actions, modifications, and git events</CardDescription>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1 cursor-pointer text-xs font-semibold"
-              onClick={() => router.push(`/agent?workspaceId=${workspaceId}`)}
-            >
-              <span>Audit in Chat</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </Button>
           </CardHeader>
           <CardContent className="divide-y divide-border p-4 pt-0">
             {activities.length === 0 ? (
