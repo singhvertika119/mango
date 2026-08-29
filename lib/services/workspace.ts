@@ -140,3 +140,53 @@ export async function getWorkspaceMembers(workspaceId: string): Promise<Workspac
   }
   return (data as any) || [];
 }
+
+export async function updateWorkspace(workspaceId: string, name: string): Promise<Workspace | null> {
+  if (!isSupabaseConfigured) {
+    const idx = mockWorkspaces.findIndex(w => w.id === workspaceId);
+    if (idx !== -1) {
+      mockWorkspaces[idx].name = name;
+      mockWorkspaces[idx].updated_at = new Date().toISOString();
+      return mockWorkspaces[idx];
+    }
+    return null;
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("workspaces")
+    .update({ name })
+    .eq("id", workspaceId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Error updating workspace:", error);
+    return null;
+  }
+  return data;
+}
+
+export async function deleteWorkspace(workspaceId: string): Promise<boolean> {
+  if (!isSupabaseConfigured) {
+    const idx = mockWorkspaces.findIndex(w => w.id === workspaceId);
+    if (idx !== -1) {
+      mockWorkspaces.splice(idx, 1);
+      return true;
+    }
+    return false;
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("workspaces")
+    .delete()
+    .eq("id", workspaceId);
+
+  if (error) {
+    console.error("Error deleting workspace:", error);
+    return false;
+  }
+  return true;
+}
+

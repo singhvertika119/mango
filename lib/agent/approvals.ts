@@ -89,5 +89,20 @@ export async function createApprovalRequest(
 
   if (approvalErr) throw approvalErr;
 
+  // 3. Create user notification
+  try {
+    const { createNotificationHelper } = await import("@/app/actions/notifications");
+    await createNotificationHelper(
+      workspaceId,
+      user.id,
+      "Agent Action Pending",
+      `The agent is requesting approval to execute tool: ${toolName}.`,
+      "approval",
+      `/agent?workspaceId=${workspaceId}`
+    );
+  } catch (err) {
+    console.error("Failed to generate approval notification:", err);
+  }
+
   return approvalId;
 }

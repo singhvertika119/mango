@@ -20,7 +20,7 @@ import {
   PanelLeftOpen
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -75,6 +75,30 @@ export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCo
   
   // User Profile State
   const [userEmail, setUserEmail] = React.useState("developer@mango.dev");
+  const [fullName, setFullName] = React.useState("Developer");
+  const [avatarUrl, setAvatarUrl] = React.useState<string | null>(null);
+  const [profileOpen, setProfileOpen] = React.useState(false);
+  const [profileDialogOpen, setProfileDialogOpen] = React.useState(false);
+  const [updatingProfile, setUpdatingProfile] = React.useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = React.useState(false);
+
+  // Password state
+  const [newPassword, setNewPassword] = React.useState("");
+  const [updatingPassword, setUpdatingPassword] = React.useState(false);
+
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Click outside listener to close the custom profile menu
+  React.useEffect(() => {
+    function clickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", clickOutside);
+    return () => document.removeEventListener("mousedown", clickOutside);
+  }, []);
 
   const loadWorkspaces = React.useCallback(async (selectId?: string) => {
     setLoading(true);
@@ -100,14 +124,110 @@ export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCo
 
   React.useEffect(() => {
     // Get user details
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (user?.email) {
         setUserEmail(user.email);
+        try {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("full_name, avatar_url")
+            .eq("id", user.id)
+            .single();
+          if (profile?.full_name) {
+            setFullName(profile.full_name);
+          }
+          if (profile?.avatar_url) {
+            setAvatarUrl(profile.avatar_url);
+          }
+        } catch (e) {
+          console.log("Offline mode, using default profile name.");
+        }
       }
     });
 
     loadWorkspaces();
   }, [loadWorkspaces, supabase.auth]);
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUpdatingProfile(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { error } = await supabase
+          .from("profiles")
+          .update({ full_name: fullName })
+          .eq("id", user.id);
+        if (error) throw error;
+        alert("Profile name updated successfully!");
+        setProfileDialogOpen(false);
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Failed to update profile name.");
+    } finally {
+      setUpdatingProfile(false);
+    }
+  };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingAvatar(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not logged in");
+
+      const fileExt = file.name.split(".").pop();
+      const filePath = `${user.id}/avatar-${Date.now()}.${fileExt}`;
+
+      // Upload image to public bucket 'avatars'
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // Generate public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
+
+      // Update public.profiles avatar_url
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({ avatar_url: publicUrl })
+        .eq("id", user.id);
+
+      if (profileError) throw profileError;
+
+      setAvatarUrl(publicUrl);
+      alert("Profile picture updated successfully!");
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Failed to upload avatar.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword.trim()) return;
+    setUpdatingPassword(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      alert("Password updated successfully!");
+      setNewPassword("");
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Failed to update password.");
+    } finally {
+      setUpdatingPassword(false);
+    }
+  };
 
   const handleCreateWorkspace = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -269,50 +389,66 @@ export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCo
         </Link>
 
         {/* User profile dropdown & collapse toggle */}
-        <div className={cn("flex items-center gap-2 pt-2 border-t border-border mt-2", collapsed ? "justify-center flex-col" : "justify-between")}>
+        <div className={cn("flex items-center gap-2 pt-2 border-t border-border mt-2 relative", collapsed ? "justify-center flex-col" : "justify-between")} ref={menuRef}>
           {!collapsed ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center gap-2 text-left rounded-lg p-1 hover:bg-accent hover:text-accent-foreground transition-all outline-none flex-1 min-w-0 cursor-pointer">
+            <div className="relative flex-1 min-w-0">
+              <button
+                onClick={() => setProfileOpen(!profileOpen)}
+                className="flex items-center gap-2 text-left rounded-lg p-1 hover:bg-accent hover:text-accent-foreground transition-all outline-none w-full cursor-pointer bg-transparent border-0"
+              >
                 <Avatar className="w-8 h-8 shrink-0">
+                  {avatarUrl && <AvatarImage src={avatarUrl} alt={fullName} />}
                   <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
                     {userEmail.substring(0, 2).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col min-w-0 flex-1">
-                  <span className="text-sm font-medium truncate">User Profile</span>
+                  <span className="text-sm font-semibold truncate">{fullName}</span>
                   <span className="text-xs text-muted-foreground truncate">{userEmail}</span>
                 </div>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56" align="end" side="top">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="font-normal">
-                    <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium leading-none">User Profile</p>
-                      <p className="text-xs leading-none text-muted-foreground">{userEmail}</p>
-                    </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="cursor-pointer gap-2">
-                    <User className="w-4 h-4" />
-                    <span>My Profile</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="cursor-pointer gap-2">
-                    <Sparkles className="w-4 h-4" />
-                    <span>Upgrade Plan</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={handleLogout}
-                    className="cursor-pointer gap-2 text-destructive focus:bg-destructive/10 focus:text-destructive"
+              </button>
+
+              {profileOpen && (
+                <div className="absolute bottom-11 left-0 w-52 rounded-xl border border-solid border-border bg-card shadow-lg z-50 p-1.5 animate-in fade-in slide-in-from-bottom-2 duration-100 text-xs">
+                  <div className="px-2 py-1.5 font-bold text-foreground border-b border-solid border-border mb-1">
+                    <p className="font-semibold text-foreground truncate">{fullName}</p>
+                    <p className="text-[10px] text-muted-foreground font-medium truncate mt-0.5">{userEmail}</p>
+                  </div>
+                  
+                  <button
+                    onClick={() => {
+                      setProfileOpen(false);
+                      setProfileDialogOpen(true);
+                    }}
+                    className="flex items-center gap-2 w-full text-left px-2 py-1.5 rounded-lg text-foreground hover:bg-accent cursor-pointer border-0 bg-transparent text-xs font-semibold"
                   >
-                    <LogOut className="w-4 h-4" />
+                    <User className="w-3.5 h-3.5" />
+                    <span>My Profile</span>
+                  </button>
+
+                  <button
+                    disabled
+                    className="flex items-center gap-2 w-full text-left px-2 py-1.5 rounded-lg text-muted-foreground/50 cursor-not-allowed border-0 bg-transparent text-xs font-semibold"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Upgrade Plan (Disabled)</span>
+                  </button>
+
+                  <div className="h-px bg-border my-1" />
+
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-2 w-full text-left px-2 py-1.5 rounded-lg text-destructive hover:bg-destructive/10 cursor-pointer border-0 bg-transparent text-xs font-semibold"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
                     <span>Log Out</span>
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  </button>
+                </div>
+              )}
+            </div>
           ) : (
-            <Avatar className="w-8 h-8">
+            <Avatar className="w-8 h-8 cursor-pointer animate-in duration-100" onClick={() => setProfileOpen(!profileOpen)}>
+              {avatarUrl && <AvatarImage src={avatarUrl} alt={fullName} />}
               <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
                 {userEmail.substring(0, 2).toUpperCase()}
               </AvatarFallback>
@@ -357,6 +493,110 @@ export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCo
               </Button>
               <Button type="submit" disabled={creating}>
                 {creating ? "Creating..." : "Create"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* My Profile Dialog */}
+      <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>User Profile</DialogTitle>
+            <DialogDescription>
+              View and edit your personal profile information.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleUpdateProfile} className="space-y-4 py-2">
+            <div className="flex flex-col items-center gap-2.5 pb-4 border-b border-solid border-border group">
+              <div 
+                className="relative w-16 h-16 rounded-full overflow-hidden cursor-pointer ring-4 ring-primary/10 hover:ring-primary/30 transition-all"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Avatar className="w-full h-full">
+                  {avatarUrl && <AvatarImage src={avatarUrl} alt={fullName} />}
+                  <AvatarFallback className="bg-primary/10 text-primary text-lg font-bold">
+                    {userEmail.substring(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-[10px] font-bold text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                  {uploadingAvatar ? "Uploading..." : "Upload Photo"}
+                </div>
+              </div>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleAvatarChange}
+                accept="image/*"
+                className="hidden"
+              />
+              <div className="text-center">
+                <h4 className="font-bold text-foreground">{fullName}</h4>
+                <p className="text-xs text-muted-foreground">{userEmail}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="profile-email">Email Address</Label>
+                <Input
+                  id="profile-email"
+                  type="email"
+                  value={userEmail}
+                  disabled
+                  className="bg-accent/45 border-border opacity-70 cursor-not-allowed text-xs"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="profile-fullname">Full Name</Label>
+                <Input
+                  id="profile-fullname"
+                  type="text"
+                  placeholder="Your Name"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  required
+                  className="text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Divider and Password Change section */}
+            <div className="border-t border-solid border-border pt-4 space-y-3">
+              <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Security & Password</h4>
+              <div className="space-y-1.5">
+                <Label htmlFor="profile-password">New Password</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="profile-password"
+                    type="password"
+                    placeholder="Enter new password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="flex-1 text-xs"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleChangePassword}
+                    disabled={updatingPassword || !newPassword.trim()}
+                    className="cursor-pointer text-xs h-9 shrink-0 font-semibold"
+                  >
+                    {updatingPassword ? "Updating..." : "Update Password"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" onClick={() => setProfileDialogOpen(false)} disabled={updatingProfile}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={updatingProfile} className="cursor-pointer">
+                {updatingProfile ? "Saving..." : "Save Profile"}
               </Button>
             </DialogFooter>
           </form>
