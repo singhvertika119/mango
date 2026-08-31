@@ -53,6 +53,8 @@ export async function executeAgentTool(
         return await tools.searchIssues(workspaceId, args.owner, args.repo, args.query);
       case "get_issue":
         return await tools.getIssue(workspaceId, args.owner, args.repo, args.issueNumber);
+      case "list_pull_requests":
+        return await tools.listPullRequests(workspaceId, args.owner, args.repo, args.state);
       case "get_pull_request":
         return await tools.getPullRequest(workspaceId, args.owner, args.repo, args.prNumber);
       case "get_commits":

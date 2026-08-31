@@ -2,13 +2,14 @@ import { createClient } from "@/lib/supabase/server";
 import { getProjects } from "@/lib/services/project";
 import { getTasks, createTask, updateTask, deleteTask } from "@/lib/services/task";
 import { getNotes, getLinks, getCodeSnippets } from "@/lib/services/knowledge";
+import { decrypt } from "@/lib/utils/crypto";
 
 const isSupabaseConfigured = !!(
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-// Helper to decrypt integrations token (Phase 10 placeholder / fallback)
+// Helper to decrypt integrations token
 async function getGithubToken(workspaceId: string): Promise<string | null> {
   if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
   if (process.env.GITHUB_PAT) return process.env.GITHUB_PAT;
@@ -25,8 +26,12 @@ async function getGithubToken(workspaceId: string): Promise<string | null> {
       .single();
 
     if (data?.credentials) {
-      // In Phase 10 we will decrypt this. For now return as raw token fallback.
-      return data.credentials;
+      try {
+        return decrypt(data.credentials);
+      } catch {
+        // Fallback in case raw string was stored
+        return data.credentials;
+      }
     }
   } catch (e) {
     console.error("Failed to retrieve integration credentials:", e);
@@ -221,7 +226,18 @@ export async function searchRepositories(workspaceId: string, query: string) {
       ]
     };
   }
-  return githubFetch(`/search/repositories?q=${encodeURIComponent(query)}`, workspaceId);
+  const res = await githubFetch(`/search/repositories?q=${encodeURIComponent(query)}&per_page=8`, workspaceId);
+  if (res.items && Array.isArray(res.items)) {
+    return {
+      items: res.items.slice(0, 8).map((r: any) => ({
+        name: r.name,
+        full_name: r.full_name,
+        description: r.description,
+        html_url: r.html_url
+      }))
+    };
+  }
+  return res;
 }
 
 export async function getRepository(workspaceId: string, owner: string, repo: string) {
@@ -229,7 +245,16 @@ export async function getRepository(workspaceId: string, owner: string, repo: st
   if (!token) {
     return { name: repo, owner: { login: owner }, description: "Offline Mock Repository Details" };
   }
-  return githubFetch(`/repos/${owner}/${repo}`, workspaceId);
+  const r = await githubFetch(`/repos/${owner}/${repo}`, workspaceId);
+  return {
+    name: r.name,
+    full_name: r.full_name,
+    description: r.description,
+    stars: r.stargazers_count,
+    forks: r.forks_count,
+    open_issues: r.open_issues_count,
+    default_branch: r.default_branch
+  };
 }
 
 export async function searchIssues(workspaceId: string, owner: string, repo: string, query?: string) {
@@ -240,7 +265,19 @@ export async function searchIssues(workspaceId: string, owner: string, repo: str
     ];
   }
   const qStr = query ? `+${encodeURIComponent(query)}` : "";
-  return githubFetch(`/search/issues?q=repo:${owner}/${repo}${qStr}`, workspaceId);
+  const res = await githubFetch(`/search/issues?q=repo:${owner}/${repo}${qStr}&per_page=8`, workspaceId);
+  const items = res.items || res;
+  if (Array.isArray(items)) {
+    return items.slice(0, 8).map((issue: any) => ({
+      number: issue.number,
+      title: issue.title,
+      state: issue.state,
+      user: issue.user?.login,
+      body: issue.body ? issue.body.slice(0, 300) : "",
+      created_at: issue.created_at
+    }));
+  }
+  return res;
 }
 
 export async function getIssue(workspaceId: string, owner: string, repo: string, issueNumber: number) {
@@ -248,7 +285,34 @@ export async function getIssue(workspaceId: string, owner: string, repo: string,
   if (!token) {
     return { number: issueNumber, title: `Mock Issue ${issueNumber}`, state: "open", body: "Body details." };
   }
-  return githubFetch(`/repos/${owner}/${repo}/issues/${issueNumber}`, workspaceId);
+  const issue = await githubFetch(`/repos/${owner}/${repo}/issues/${issueNumber}`, workspaceId);
+  return {
+    number: issue.number,
+    title: issue.title,
+    state: issue.state,
+    user: issue.user?.login,
+    body: issue.body ? issue.body.slice(0, 600) : "",
+    created_at: issue.created_at
+  };
+}
+
+export async function listPullRequests(workspaceId: string, owner: string, repo: string, state: string = "open") {
+  const token = await getGithubToken(workspaceId);
+  if (!token) {
+    return [
+      { number: 1, title: "Initial MCP Server integration", state: "open", user: "developer", created_at: new Date().toISOString() }
+    ];
+  }
+  const data = await githubFetch(`/repos/${owner}/${repo}/pulls?state=${state}&per_page=8`, workspaceId);
+  if (!Array.isArray(data)) return data;
+  return data.slice(0, 8).map((pr: any) => ({
+    number: pr.number,
+    title: pr.title,
+    state: pr.state,
+    user: pr.user?.login,
+    created_at: pr.created_at,
+    html_url: pr.html_url
+  }));
 }
 
 export async function getPullRequest(workspaceId: string, owner: string, repo: string, prNumber: number) {
@@ -256,15 +320,31 @@ export async function getPullRequest(workspaceId: string, owner: string, repo: s
   if (!token) {
     return { number: prNumber, title: `Mock PR ${prNumber}`, state: "open", diff_url: "" };
   }
-  return githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}`, workspaceId);
+  const pr = await githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}`, workspaceId);
+  return {
+    number: pr.number,
+    title: pr.title,
+    state: pr.state,
+    user: pr.user?.login,
+    body: pr.body ? pr.body.slice(0, 500) : "",
+    created_at: pr.created_at,
+    html_url: pr.html_url
+  };
 }
 
 export async function getCommits(workspaceId: string, owner: string, repo: string) {
   const token = await getGithubToken(workspaceId);
   if (!token) {
-    return [{ sha: "abcdef", commit: { message: "Mock Commit message", author: { name: "Antigravity" } } }];
+    return [{ sha: "abcdef7", message: "Mock Commit message", author: "Antigravity", date: new Date().toISOString() }];
   }
-  return githubFetch(`/repos/${owner}/${repo}/commits`, workspaceId);
+  const data = await githubFetch(`/repos/${owner}/${repo}/commits?per_page=8`, workspaceId);
+  if (!Array.isArray(data)) return data;
+  return data.slice(0, 8).map((c: any) => ({
+    sha: c.sha?.substring(0, 7),
+    message: c.commit?.message?.split("\n")[0],
+    author: c.commit?.author?.name || c.author?.login || "Unknown",
+    date: c.commit?.author?.date || c.commit?.committer?.date
+  }));
 }
 
 export async function createIssue(workspaceId: string, owner: string, repo: string, title: string, body?: string) {
@@ -272,10 +352,16 @@ export async function createIssue(workspaceId: string, owner: string, repo: stri
   if (!token) {
     return { number: 99, title, body, state: "open" };
   }
-  return githubFetch(`/repos/${owner}/${repo}/issues`, workspaceId, {
+  const created = await githubFetch(`/repos/${owner}/${repo}/issues`, workspaceId, {
     method: "POST",
     body: JSON.stringify({ title, body })
   });
+  return {
+    number: created.number,
+    title: created.title,
+    state: created.state,
+    html_url: created.html_url
+  };
 }
 
 export async function updateIssue(workspaceId: string, owner: string, repo: string, issueNumber: number, updates: any) {
@@ -283,8 +369,13 @@ export async function updateIssue(workspaceId: string, owner: string, repo: stri
   if (!token) {
     return { number: issueNumber, ...updates, state: "closed" };
   }
-  return githubFetch(`/repos/${owner}/${repo}/issues/${issueNumber}`, workspaceId, {
+  const updated = await githubFetch(`/repos/${owner}/${repo}/issues/${issueNumber}`, workspaceId, {
     method: "PATCH",
     body: JSON.stringify(updates)
   });
+  return {
+    number: updated.number,
+    title: updated.title,
+    state: updated.state
+  };
 }

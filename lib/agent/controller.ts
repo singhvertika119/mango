@@ -12,7 +12,7 @@ const isSupabaseConfigured = !!(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-// Unified generative answer function
+// Unified generative answer function with token-budget truncation guards
 async function generateContextualAnswer(
   userQuery: string,
   context: AgentContext,
@@ -20,30 +20,33 @@ async function generateContextualAnswer(
 ): Promise<string> {
   const brain = context.projectBrain;
 
+  // Trim sub-contexts to fit strictly inside token budget
+  const summary = (brain.summary || "").slice(0, 1000);
+  const knowledgeFacts = (brain.knowledgeFacts || "").slice(0, 1000);
+  const tasksContext = (brain.tasksContext || "").slice(0, 1000);
+  const semanticContext = (brain.semanticContext || "").slice(0, 1500);
+  const safeLog = toolExecutionLog ? toolExecutionLog.slice(0, 2500) : "";
+
   const systemPrompt = `You are a helpful, context-aware Workspace Agent. Answer the user's query clearly and accurately using the context provided below.
 
 =========================================
 PROJECT SUMMARY:
-${brain.summary}
+${summary}
 
 =========================================
 PROJECT CHEATSHEETS & FACTS (NOTES/SNIPPETS/LINKS):
-${brain.knowledgeFacts}
+${knowledgeFacts}
 
 =========================================
 PROJECT ACTIVE TASKS:
-${brain.tasksContext}
-
-=========================================
-RECENT PROJECT WORK ACTIVITY LOG:
-${brain.recentActivity}
+${tasksContext}
 
 =========================================
 RELEVANT RAG DOCUMENT CHUNKS:
-${brain.semanticContext}
+${semanticContext}
 
 =========================================
-${toolExecutionLog ? `RECENT DRAFTED ACTIONS/TOOL EXECUTION LOGS:\n${toolExecutionLog}\n=========================================` : ""}
+${safeLog ? `RECENT DRAFTED ACTIONS/TOOL EXECUTION LOGS:\n${safeLog}\n=========================================` : ""}
 
 Answer the query using the context above. If you cannot answer it or don't have information, say so.`;
 

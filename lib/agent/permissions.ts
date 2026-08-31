@@ -21,6 +21,7 @@ const TOOL_PERMISSIONS: Record<string, ToolPermission> = {
   "get_repository": { name: "get_repository", riskLevel: "READ", requiresApproval: false },
   "search_issues": { name: "search_issues", riskLevel: "READ", requiresApproval: false },
   "get_issue": { name: "get_issue", riskLevel: "READ", requiresApproval: false },
+  "list_pull_requests": { name: "list_pull_requests", riskLevel: "READ", requiresApproval: false },
   "get_pull_request": { name: "get_pull_request", riskLevel: "READ", requiresApproval: false },
   "get_commits": { name: "get_commits", riskLevel: "READ", requiresApproval: false },
 

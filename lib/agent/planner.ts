@@ -30,8 +30,14 @@ AVAILABLE TOOLS:
 8. "search_code_snippets" (args: { workspaceId: string, projectId: string, query?: string }) - Search code snippets.
 9. "get_project_activity" (args: { projectId: string }) - Fetch recent logs.
 10. "search_repositories" (args: { workspaceId: string, query: string }) - Search GitHub repos.
-11. "create_issue" (args: { workspaceId: string, owner: string, repo: string, title: string, body?: string }) - Create GitHub issue.
-12. "update_issue" (args: { workspaceId: string, owner: string, repo: string, issueNumber: number, updates: { title?: string, body?: string, state?: string } }) - Update GitHub issue.
+11. "get_repository" (args: { workspaceId: string, owner: string, repo: string }) - Get repository metadata.
+12. "get_commits" (args: { workspaceId: string, owner: string, repo: string }) - Fetch recent git commits from a GitHub repository.
+13. "list_pull_requests" (args: { workspaceId: string, owner: string, repo: string, state?: string }) - List open or closed pull requests in a repository.
+14. "get_pull_request" (args: { workspaceId: string, owner: string, repo: string, prNumber: number }) - Get specific pull request details.
+15. "search_issues" (args: { workspaceId: string, owner: string, repo: string, query?: string }) - Search issues in a repository.
+16. "get_issue" (args: { workspaceId: string, owner: string, repo: string, issueNumber: number }) - Read issue details.
+17. "create_issue" (args: { workspaceId: string, owner: string, repo: string, title: string, body?: string }) - Create GitHub issue.
+18. "update_issue" (args: { workspaceId: string, owner: string, repo: string, issueNumber: number, updates: { title?: string, body?: string, state?: string } }) - Update GitHub issue.
 
 RULES:
 - If the user query is a simple question (e.g. "What is the tech stack?") that can be answered from the document chunks or notes in the context, do NOT plan any tool calls. Return an empty toolCalls array.
