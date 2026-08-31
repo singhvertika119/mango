@@ -1,27 +1,93 @@
 "use client";
 
 import * as React from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { Bell, Search, Sparkles, Sun, Moon, Check, Inbox, CheckCircle2, AlertTriangle, AlertCircle, Info, ArrowRight, FileText, CheckSquare, LayoutDashboard, FolderKanban, BookOpen, MessageSquareCode, Settings, Puzzle, Loader2 } from "lucide-react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { Bell, Search, Sparkles, Sun, Moon, Check, Inbox, CheckCircle2, AlertTriangle, AlertCircle, Info, ArrowRight, FileText, CheckSquare, LayoutDashboard, FolderKanban, BookOpen, MessageSquareCode, Settings, Puzzle, Loader2, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import { getNotificationsAction, markNotificationAsReadAction, Notification } from "@/app/actions/notifications";
+import logo from "@/public/mango_logo.png";
+import { getWorkspacesAction, createWorkspaceAction } from "@/app/actions/workspace";
+import { ChevronsUpDown, Plus } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogFooter
 } from "@/components/ui/dialog";
 
 export function Topbar() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
   const supabase = createClient();
   const workspaceId = searchParams.get("workspaceId");
   
   const [workspaceName, setWorkspaceName] = React.useState("Workspace");
   const [theme, setTheme] = React.useState<"light" | "dark">("light");
+
+  // Workspace Switcher State
+  const [workspaces, setWorkspaces] = React.useState<any[]>([]);
+  const [activeWorkspace, setActiveWorkspace] = React.useState<any | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = React.useState(false);
+  const [newWorkspaceName, setNewWorkspaceName] = React.useState("");
+  const [creating, setCreating] = React.useState(false);
+
+  const loadWorkspaces = React.useCallback(async () => {
+    const res = await getWorkspacesAction();
+    if (res.success && res.workspaces) {
+      setWorkspaces(res.workspaces);
+      const matched = res.workspaces.find((w: any) => w.id === workspaceId) || res.workspaces[0];
+      setActiveWorkspace(matched || null);
+      if (matched) {
+        setWorkspaceName(matched.name);
+      }
+    }
+  }, [workspaceId]);
+
+  React.useEffect(() => {
+    loadWorkspaces();
+  }, [loadWorkspaces]);
+
+  const handleSwitchWorkspace = (ws: any) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("workspaceId", ws.id);
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
+  const handleCreateWorkspace = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newWorkspaceName.trim()) return;
+    setCreating(true);
+    const res = await createWorkspaceAction(newWorkspaceName.trim());
+    setCreating(false);
+    if (res.success && res.workspace) {
+      setNewWorkspaceName("");
+      setCreateDialogOpen(false);
+      loadWorkspaces();
+      
+      const params = new URLSearchParams(searchParams);
+      params.set("workspaceId", res.workspace.id);
+      router.push(`${pathname}?${params.toString()}`);
+    }
+  };
+
+  const getInitials = (name: string) => {
+    return name.substring(0, 2).toUpperCase();
+  };
 
   // Command Palette Search State
   const [paletteOpen, setPaletteOpen] = React.useState(false);
@@ -174,65 +240,101 @@ export function Topbar() {
   return (
     <>
       <header className="flex items-center justify-between h-14 border-b border-border px-6 bg-card/40 shrink-0 select-none">
-      {/* Search Bar / Workspace Title */}
-      <div className="flex items-center gap-4">
-        <span className="text-sm font-bold tracking-tight text-foreground bg-accent border border-border border-solid px-2.5 py-1 rounded-lg">
-          {workspaceName}
-        </span>
-        <div 
-          onClick={() => setPaletteOpen(true)}
-          className="relative w-64 hidden sm:block cursor-pointer group"
-        >
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-          <Input
-            type="text"
-            readOnly
-            placeholder="Search files, tasks, settings..."
-            className="pl-9 h-8 text-xs bg-accent/30 border-border placeholder:text-muted-foreground focus-visible:ring-primary/20 cursor-pointer pointer-events-none"
-          />
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-muted-foreground bg-accent border border-border px-1.5 py-0.5 rounded pointer-events-none">
-            Ctrl K
+        {/* Left Side: Search Bar */}
+        <div className="flex items-center gap-4">
+          <div 
+            onClick={() => setPaletteOpen(true)}
+            className="relative w-72 hidden sm:block cursor-pointer group animate-in duration-100"
+          >
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+            <Input
+              type="text"
+              readOnly
+              placeholder="Search files, tasks, settings..."
+              className="pl-9 h-8 text-xs bg-accent/30 border-border placeholder:text-muted-foreground focus-visible:ring-primary/20 cursor-pointer pointer-events-none"
+            />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-muted-foreground bg-accent border border-border px-1.5 py-0.5 rounded pointer-events-none">
+              Ctrl K
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Right Actions */}
-      <div className="flex items-center gap-3 relative" ref={dropdownRef}>
-        {/* Ask Agent Quick Trigger */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => router.push(`/agent?workspaceId=${workspaceId}`)}
-          className="hidden sm:flex items-center gap-2 border-primary/20 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-semibold rounded-full h-8 px-3 cursor-pointer"
-        >
-          <Sparkles className="w-3.5 h-3.5 fill-current" />
-          <span>Ask Agent</span>
-        </Button>
-
-        {/* Theme Toggle */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleTheme}
-          className="text-muted-foreground hover:bg-accent hover:text-accent-foreground h-9 w-9 rounded-lg cursor-pointer"
-        >
-          {theme === "light" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-        </Button>
-
-        {/* Notifications Button */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setNotifOpen(!notifOpen)}
-          className="relative text-muted-foreground hover:bg-accent hover:text-accent-foreground h-9 w-9 rounded-lg cursor-pointer"
-        >
-          <Bell className="w-4 h-4" />
-          {unreadCount > 0 && (
-            <span className="absolute top-2 right-2 min-w-3.5 h-3.5 rounded-full bg-primary text-[8px] font-bold text-primary-foreground flex items-center justify-center px-1">
-              {unreadCount}
-            </span>
+        {/* Right Side Actions (Switcher, Ask Agent, Theme, Notifications) */}
+        <div className="flex items-center gap-3 relative animate-in duration-100" ref={dropdownRef}>
+          {/* Workspace Switcher in Top Right */}
+          {activeWorkspace && (
+            <DropdownMenu>
+              <DropdownMenuTrigger className="flex items-center gap-1.5 cursor-pointer text-xs font-bold tracking-tight text-foreground bg-accent hover:bg-accent/80 border border-border border-solid px-2.5 py-1 rounded-lg outline-none select-none">
+                <span>{workspaceName}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56 align-end animate-in duration-100" side="bottom" align="end">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="text-[10px] text-muted-foreground font-bold px-2 py-1.5 uppercase tracking-wider">
+                    Switch Workspace
+                  </DropdownMenuLabel>
+                  {workspaces.map((ws) => (
+                    <DropdownMenuItem
+                      key={ws.id}
+                      onClick={() => handleSwitchWorkspace(ws)}
+                      className={`flex items-center gap-2 cursor-pointer ${
+                        activeWorkspace.id === ws.id ? "bg-accent font-semibold text-accent-foreground" : ""
+                      }`}
+                    >
+                      <div className="flex items-center justify-center w-6 h-6 rounded bg-primary/10 text-primary text-xs font-bold shrink-0">
+                        {getInitials(ws.name)}
+                      </div>
+                      <span className="text-xs truncate">{ws.name}</span>
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => setCreateDialogOpen(true)}
+                    className="flex items-center gap-2 cursor-pointer text-primary"
+                  >
+                    <Plus className="w-4 h-4 text-primary shrink-0" />
+                    <span className="text-xs font-semibold">Create Workspace</span>
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
-        </Button>
+
+          {/* Ask Agent Quick Trigger */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push(`/agent?workspaceId=${workspaceId}`)}
+            className="hidden sm:flex items-center gap-2 border-primary/20 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-semibold rounded-full h-8 px-3 cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5 fill-current" />
+            <span>Ask Agent</span>
+          </Button>
+
+          {/* Theme Toggle */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleTheme}
+            className="text-muted-foreground hover:bg-accent hover:text-accent-foreground h-9 w-9 rounded-lg cursor-pointer"
+          >
+            {theme === "light" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+          </Button>
+
+          {/* Notifications Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setNotifOpen(!notifOpen)}
+            className="relative text-muted-foreground hover:bg-accent hover:text-accent-foreground h-9 w-9 rounded-lg cursor-pointer animate-in duration-100"
+          >
+            <Bell className="w-4 h-4" />
+            {unreadCount > 0 && (
+              <span className="absolute top-2 right-2 min-w-3.5 h-3.5 rounded-full bg-primary text-[8px] font-bold text-primary-foreground flex items-center justify-center px-1">
+                {unreadCount}
+              </span>
+            )}
+          </Button>
 
         {/* Notifications Dropdown Panel */}
         {notifOpen && (
@@ -419,6 +521,52 @@ export function Topbar() {
             </div>
           )}
         </div>
+      </DialogContent>
+    </Dialog>
+
+    {/* Create Workspace Dialog */}
+    <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+      <DialogContent className="max-w-md bg-card border-border shadow-2xl rounded-xl">
+        <DialogHeader>
+          <DialogTitle className="text-lg font-bold text-foreground">Create Workspace</DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            Add a new workspace to organize your tasks, projects, and documents.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleCreateWorkspace}>
+          <div className="space-y-4 py-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="topbar-ws-name" className="text-xs font-semibold">Workspace Name</Label>
+              <Input
+                id="topbar-ws-name"
+                placeholder="e.g. Acme Production, DeFi Launch"
+                value={newWorkspaceName}
+                onChange={(e) => setNewWorkspaceName(e.target.value)}
+                required
+                className="h-9 bg-accent/30 text-xs border-border placeholder:text-muted-foreground"
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCreateDialogOpen(false)}
+              disabled={creating}
+              className="text-xs h-9 cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={creating || !newWorkspaceName.trim()}
+              className="text-xs h-9 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold cursor-pointer"
+            >
+              {creating ? "Creating..." : "Create Workspace"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
     </>

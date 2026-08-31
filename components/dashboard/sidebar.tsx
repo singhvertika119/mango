@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/dialog";
 import { createWorkspaceAction, getWorkspacesAction } from "@/app/actions/workspace";
 import { createClient } from "@/lib/supabase/client";
+import logo from "@/public/mango_logo.png";
 
 interface Workspace {
   id: string;
@@ -72,7 +73,7 @@ export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCo
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = React.useState("");
   const [creating, setCreating] = React.useState(false);
-  
+
   // User Profile State
   const [userEmail, setUserEmail] = React.useState("developer@mango.dev");
   const [fullName, setFullName] = React.useState("Developer");
@@ -271,67 +272,21 @@ export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCo
         collapsed ? "w-16" : "w-64"
       )}
     >
-      {/* Workspace Switcher */}
-      <div className={cn("flex items-center justify-between p-4 border-b border-border h-16", collapsed && "justify-center px-2")}>
+      {/* Sidebar Branding (Logo) */}
+      <div className={cn("flex items-center px-4 border-b border-border h-16 select-none", collapsed ? "justify-center px-2" : "justify-start gap-3")}>
         {!collapsed ? (
-          activeWorkspace ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center gap-3 w-full text-left rounded-lg p-2 hover:bg-accent hover:text-accent-foreground transition-all group outline-none cursor-pointer">
-                <div className="flex items-center justify-center w-8 h-8 rounded-md bg-primary text-primary-foreground font-semibold shrink-0">
-                  {getInitials(activeWorkspace.name)}
-                </div>
-                <div className="flex flex-col min-w-0 flex-1">
-                  <span className="text-sm font-semibold truncate group-hover:text-accent-foreground">
-                    {activeWorkspace.name}
-                  </span>
-                  <span className="text-xs text-muted-foreground truncate">
-                    Workspace
-                  </span>
-                </div>
-                <ChevronsUpDown className="w-4 h-4 text-muted-foreground shrink-0" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56 align-start" side="bottom" align="start">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="text-xs text-muted-foreground font-semibold px-2 py-1.5">
-                    Workspaces
-                  </DropdownMenuLabel>
-                  {workspaces.map((ws) => (
-                    <DropdownMenuItem
-                      key={ws.id}
-                      onClick={() => handleSwitchWorkspace(ws)}
-                      className={cn(
-                        "flex items-center gap-2 cursor-pointer",
-                        activeWorkspace.id === ws.id && "bg-accent font-medium text-accent-foreground"
-                      )}
-                    >
-                      <div className="flex items-center justify-center w-6 h-6 rounded bg-primary/10 text-primary text-xs font-semibold shrink-0">
-                        {getInitials(ws.name)}
-                      </div>
-                      <div className="flex flex-col min-w-0 flex-1">
-                        <span className="text-sm truncate">{ws.name}</span>
-                      </div>
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => setDialogOpen(true)}
-                    className="flex items-center gap-2 cursor-pointer text-primary"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-sm">Create Workspace</span>
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <div className="text-xs text-muted-foreground p-2">Loading...</div>
-          )
-        ) : (
-          activeWorkspace && (
-            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary text-primary-foreground font-bold shadow-md shadow-primary/20">
-              {getInitials(activeWorkspace.name)}
+          <div className="flex items-center gap-2.5">
+            <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-amber-500 to-yellow-400 flex items-center justify-center shrink-0 shadow-md shadow-amber-500/20">
+              <span className="text-xs text-white font-black leading-none">m</span>
             </div>
-          )
+            <span className="text-[25px] font-black tracking-tighter text-foreground font-sans">
+              mango
+            </span>
+          </div>
+        ) : (
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-yellow-400 text-white flex items-center justify-center font-black text-sm shrink-0 shadow-md shadow-amber-500/20">
+            m
+          </div>
         )}
       </div>
 
@@ -414,7 +369,7 @@ export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCo
                     <p className="font-semibold text-foreground truncate">{fullName}</p>
                     <p className="text-[10px] text-muted-foreground font-medium truncate mt-0.5">{userEmail}</p>
                   </div>
-                  
+
                   <button
                     onClick={() => {
                       setProfileOpen(false);
@@ -510,7 +465,7 @@ export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCo
           </DialogHeader>
           <form onSubmit={handleUpdateProfile} className="space-y-4 py-2">
             <div className="flex flex-col items-center gap-2.5 pb-4 border-b border-solid border-border group">
-              <div 
+              <div
                 className="relative w-16 h-16 rounded-full overflow-hidden cursor-pointer ring-4 ring-primary/10 hover:ring-primary/30 transition-all"
                 onClick={() => fileInputRef.current?.click()}
               >
