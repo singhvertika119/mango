@@ -56,3 +56,41 @@ export async function deleteProjectAction(projectId: string) {
     return { success: false, error: err.message || "An error occurred." };
   }
 }
+
+export async function getProjectMembersAction(projectId: string) {
+  try {
+    const members = await projectService.getProjectMembers(projectId);
+    return { success: true, members };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to fetch project members." };
+  }
+}
+
+export async function inviteProjectMemberAction(
+  projectId: string,
+  email: string,
+  role: "EDITOR" | "VIEWER" = "EDITOR"
+): Promise<{ success: boolean; error?: string; member?: projectService.ProjectMember }> {
+  try {
+    const res = await projectService.addProjectMember(projectId, email, role);
+    if (res.success) {
+      revalidatePath("/projects");
+    }
+    return res;
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to invite project member." };
+  }
+}
+
+export async function removeProjectMemberAction(projectId: string, memberId: string) {
+  try {
+    const success = await projectService.removeProjectMember(projectId, memberId);
+    if (success) {
+      revalidatePath("/projects");
+      return { success: true };
+    }
+    return { success: false, error: "Failed to remove project member." };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to remove member." };
+  }
+}

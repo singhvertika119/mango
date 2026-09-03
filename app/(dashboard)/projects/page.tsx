@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
-import { FolderKanban, Plus, Calendar, Activity, AlertCircle } from "lucide-react";
+import { FolderKanban, Plus, Calendar, Activity, AlertCircle, Share2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,15 +16,8 @@ import {
   DialogFooter
 } from "@/components/ui/dialog";
 import { createProjectAction, getProjectsAction } from "@/app/actions/project";
-
-interface Project {
-  id: string;
-  name: string;
-  description: string | null;
-  status: string;
-  start_date: string | null;
-  target_date: string | null;
-}
+import { ProjectShareModal } from "@/components/dashboard/project-share-modal";
+import { Project } from "@/lib/services/project";
 
 export default function ProjectsPage() {
   const searchParams = useSearchParams();
@@ -42,13 +35,17 @@ export default function ProjectsPage() {
   const [targetDate, setTargetDate] = React.useState("");
   const [creating, setCreating] = React.useState(false);
 
+  // Share Modal State
+  const [sharingProject, setSharingProject] = React.useState<Project | null>(null);
+  const [shareModalOpen, setShareModalOpen] = React.useState(false);
+
   const fetchProjects = React.useCallback(async () => {
     if (!workspaceId) return;
     setLoading(true);
     setError(null);
     const res = await getProjectsAction(workspaceId);
     if (res.success && res.projects) {
-      setProjects(res.projects);
+      setProjects(res.projects as Project[]);
     } else {
       setError(res.error || "Failed to fetch projects.");
     }
@@ -148,30 +145,71 @@ export default function ProjectsPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {projects.map((proj) => (
-            <Card key={proj.id} className="border-border bg-card hover:shadow-md transition-shadow flex flex-col justify-between">
-              <CardHeader>
-                <div className="flex items-center gap-2 text-primary">
-                  <FolderKanban className="w-5 h-5" />
-                  <CardTitle className="text-base font-bold truncate">{proj.name}</CardTitle>
-                </div>
-                <CardDescription className="pt-2 leading-relaxed line-clamp-3 h-12">
-                  {proj.description || "No description provided."}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pt-0 text-xs text-muted-foreground space-y-2 border-t border-border mt-4 p-6">
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-3.5 h-3.5" />
-                  <span>Timeline: {formatDate(proj.start_date)} - {formatDate(proj.target_date)}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Activity className="w-3.5 h-3.5" />
-                  <span className="capitalize">Status: <span className="font-semibold text-foreground">{proj.status}</span></span>
-                </div>
-              </CardContent>
+            <Card key={proj.id} className="border-border bg-card hover:shadow-md transition-all flex flex-col justify-between overflow-hidden">
+              <div>
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 text-primary min-w-0">
+                      <FolderKanban className="w-5 h-5 shrink-0" />
+                      <CardTitle className="text-base font-bold truncate">{proj.name}</CardTitle>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSharingProject(proj);
+                        setShareModalOpen(true);
+                      }}
+                      className="h-7 px-2 text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-primary/10 gap-1 rounded-md cursor-pointer shrink-0"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>Share</span>
+                    </Button>
+                  </div>
+                  <CardDescription className="pt-2 leading-relaxed line-clamp-2 h-10 text-xs">
+                    {proj.description || "No description provided."}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-0 text-xs text-muted-foreground space-y-2 border-t border-border mt-1 p-5">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>Timeline: {formatDate(proj.start_date)} - {formatDate(proj.target_date)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-3.5 h-3.5" />
+                    <span className="capitalize">Status: <span className="font-semibold text-foreground">{proj.status}</span></span>
+                  </div>
+                </CardContent>
+              </div>
+
+              <CardFooter className="bg-accent/20 border-t border-border px-5 py-2.5 flex items-center justify-between text-xs">
+                <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Project Shared</span>
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSharingProject(proj);
+                    setShareModalOpen(true);
+                  }}
+                  className="h-7 text-xs font-semibold cursor-pointer border-border hover:bg-accent"
+                >
+                  Manage Access
+                </Button>
+              </CardFooter>
             </Card>
           ))}
         </div>
       )}
+
+      {/* Project Share & Collaborators Modal */}
+      <ProjectShareModal
+        open={shareModalOpen}
+        onOpenChange={setShareModalOpen}
+        project={sharingProject}
+      />
 
       {/* New Project Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

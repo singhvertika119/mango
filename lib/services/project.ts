@@ -155,3 +155,125 @@ export async function deleteProject(projectId: string): Promise<boolean> {
   }
   return true;
 }
+
+export interface ProjectMember {
+  id: string;
+  project_id: string;
+  profile_id: string;
+  role: "EDITOR" | "VIEWER";
+  created_at: string;
+  profile?: {
+    id: string;
+    email: string;
+    full_name: string | null;
+    avatar_url: string | null;
+  };
+}
+
+let mockProjectMembers: ProjectMember[] = [];
+
+export async function getProjectMembers(projectId: string): Promise<ProjectMember[]> {
+  if (!isSupabaseConfigured) {
+    return mockProjectMembers.filter(m => m.project_id === projectId);
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("project_members")
+    .select("*, profile:profiles(id, email, full_name, avatar_url)")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("Error fetching project members:", error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function addProjectMember(
+  projectId: string,
+  email: string,
+  role: "EDITOR" | "VIEWER" = "EDITOR"
+): Promise<{ success: boolean; error?: string; member?: ProjectMember }> {
+  if (!isSupabaseConfigured) {
+    const newMember: ProjectMember = {
+      id: `mock-pm-${Date.now()}`,
+      project_id: projectId,
+      profile_id: `mock-prof-${Date.now()}`,
+      role,
+      created_at: new Date().toISOString(),
+      profile: {
+        id: `mock-prof-${Date.now()}`,
+        email,
+        full_name: email.split("@")[0],
+        avatar_url: null
+      }
+    };
+    mockProjectMembers.push(newMember);
+    return { success: true, member: newMember };
+  }
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Not authenticated" };
+
+  // Find profile by email
+  const { data: targetProfile, error: profileErr } = await supabase
+    .from("profiles")
+    .select("id, email, full_name, avatar_url")
+    .ilike("email", email.trim())
+    .maybeSingle();
+
+  if (profileErr || !targetProfile) {
+    return {
+      success: false,
+      error: `No user found with email "${email}". Please ensure your teammate has registered on Mango first.`
+    };
+  }
+
+  // Insert into project_members
+  const { data: member, error: insertErr } = await supabase
+    .from("project_members")
+    .insert({
+      project_id: projectId,
+      profile_id: targetProfile.id,
+      role,
+      invited_by: user.id
+    })
+    .select("*, profile:profiles(id, email, full_name, avatar_url)")
+    .single();
+
+  if (insertErr) {
+    if (insertErr.code === "23505") {
+      return { success: false, error: "This user is already a member of this project." };
+    }
+    return { success: false, error: insertErr.message || "Failed to add member to project." };
+  }
+
+  return { success: true, member };
+}
+
+export async function removeProjectMember(projectId: string, memberId: string): Promise<boolean> {
+  if (!isSupabaseConfigured) {
+    const idx = mockProjectMembers.findIndex(m => m.id === memberId);
+    if (idx !== -1) {
+      mockProjectMembers.splice(idx, 1);
+      return true;
+    }
+    return false;
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("project_members")
+    .delete()
+    .eq("id", memberId)
+    .eq("project_id", projectId);
+
+  if (error) {
+    console.error("Error removing project member:", error);
+    return false;
+  }
+  return true;
+}
