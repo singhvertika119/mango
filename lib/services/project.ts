@@ -6,6 +6,7 @@ export interface Project {
   name: string;
   description: string | null;
   status: string;
+  github_repo?: string | null;
   start_date: string | null;
   target_date: string | null;
   created_by?: string;
@@ -26,6 +27,7 @@ let mockProjects: Project[] = [
     name: "Workspace Agent MVP",
     description: "Build Next.js + Supabase foundation, auth, layouts, and mock workspaces.",
     status: "active",
+    github_repo: "singhvertika119/mango",
     start_date: new Date().toISOString(),
     target_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
     created_at: new Date().toISOString(),
@@ -52,12 +54,32 @@ export async function getProjects(workspaceId: string): Promise<Project[]> {
   return data || [];
 }
 
+export async function getProject(projectId: string): Promise<Project | null> {
+  if (!isSupabaseConfigured) {
+    return mockProjects.find((p) => p.id === projectId) || null;
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("id", projectId)
+    .single();
+
+  if (error) {
+    console.error("Error fetching project:", error);
+    return null;
+  }
+  return data;
+}
+
 export async function createProject(
   workspaceId: string,
   name: string,
   description: string | null,
   startDate?: string,
-  targetDate?: string
+  targetDate?: string,
+  githubRepo?: string | null
 ): Promise<Project | null> {
   if (!isSupabaseConfigured) {
     const proj: Project = {
@@ -66,6 +88,7 @@ export async function createProject(
       name,
       description,
       status: "active",
+      github_repo: githubRepo || null,
       start_date: startDate || new Date().toISOString(),
       target_date: targetDate || null,
       created_at: new Date().toISOString(),
@@ -86,6 +109,7 @@ export async function createProject(
       workspace_id: workspaceId,
       name,
       description,
+      github_repo: githubRepo || null,
       start_date: startDate || null,
       target_date: targetDate || null,
       created_by: user.id,

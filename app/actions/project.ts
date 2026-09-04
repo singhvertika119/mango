@@ -8,10 +8,11 @@ export async function createProjectAction(
   name: string,
   description: string | null,
   startDate?: string,
-  targetDate?: string
+  targetDate?: string,
+  githubRepo?: string | null
 ) {
   try {
-    const proj = await projectService.createProject(workspaceId, name, description, startDate, targetDate);
+    const proj = await projectService.createProject(workspaceId, name, description, startDate, targetDate, githubRepo);
     if (proj) {
       revalidatePath("/projects");
       return { success: true, project: proj };

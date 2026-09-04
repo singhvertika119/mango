@@ -132,6 +132,20 @@ export async function POST(req: NextRequest) {
             }
           },
           {
+            name: "list_pull_requests",
+            description: "List open or closed pull requests in a repository.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                workspaceId: { type: "string" },
+                owner: { type: "string" },
+                repo: { type: "string" },
+                state: { type: "string", enum: ["open", "closed", "all"] }
+              },
+              required: ["workspaceId", "owner", "repo"]
+            }
+          },
+          {
             name: "get_commits",
             description: "Retrieve commit history logs of a repository.",
             inputSchema: {
@@ -199,6 +213,9 @@ export async function POST(req: NextRequest) {
           break;
         case "get_issue":
           output = await tools.getIssue(args.workspaceId, args.owner, args.repo, args.issueNumber);
+          break;
+        case "list_pull_requests":
+          output = await tools.listPullRequests(args.workspaceId, args.owner, args.repo, args.state);
           break;
         case "get_pull_request":
           output = await tools.getPullRequest(args.workspaceId, args.owner, args.repo, args.prNumber);

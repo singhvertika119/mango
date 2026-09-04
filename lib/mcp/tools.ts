@@ -198,7 +198,7 @@ async function githubFetch(url: string, workspaceId: string, options: RequestIni
   };
 
   if (token) {
-    headers["Authorization"] = `token ${token}`;
+    headers["Authorization"] = `Bearer ${token.trim()}`;
   }
 
   const res = await fetch(`https://api.github.com${url}`, {
@@ -211,7 +211,31 @@ async function githubFetch(url: string, workspaceId: string, options: RequestIni
 
   if (!res.ok) {
     const errorText = await res.text();
-    throw new Error(`GitHub API returned status ${res.status}: ${errorText}`);
+    let errMessage = errorText;
+    try {
+      const parsed = JSON.parse(errorText);
+      if (parsed.message) errMessage = parsed.message;
+    } catch {}
+
+    if (res.status === 401) {
+      throw new Error(
+        `GitHub API authentication failed (401 Bad credentials). The connected GitHub token is invalid or expired. Please go to Integrations (/integrations) in your workspace settings to reconnect GitHub or provide a valid Personal Access Token (PAT).`
+      );
+    }
+
+    if (res.status === 404) {
+      throw new Error(
+        `GitHub repository or resource was not found (404 Not Found). Please verify that the repository exists and that your GitHub token has permissions to access it.`
+      );
+    }
+
+    if (res.status === 403) {
+      throw new Error(
+        `GitHub API returned 403 Forbidden: ${errMessage}. This may be caused by API rate limits or insufficient permissions for the token.`
+      );
+    }
+
+    throw new Error(`GitHub API returned status ${res.status}: ${errMessage}`);
   }
 
   return res.json();

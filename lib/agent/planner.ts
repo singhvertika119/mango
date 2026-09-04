@@ -21,9 +21,9 @@ Examine the list of available tools below:
 
 AVAILABLE TOOLS:
 1. "get_project" (args: { projectId: string }) - Get detailed project information.
-2. "search_tasks" (args: { workspaceId: string, query?: string, status?: string }) - Find tasks.
-3. "create_task" (args: { workspaceId: string, projectId: string, title: string, description?: string, status?: string, priority?: string }) - Create a new task.
-4. "update_task" (args: { taskId: string, updates: { title?: string, description?: string, status?: string, priority?: string } }) - Update task.
+2. "search_tasks" (args: { workspaceId: string, query?: string, status?: "Todo" | "In Progress" | "Review" | "Completed" | "Blocked" }) - Find tasks.
+3. "create_task" (args: { workspaceId: string, projectId: string, title: string, description?: string, status?: "Todo" | "In Progress" | "Review" | "Completed" | "Blocked", priority?: "low" | "medium" | "high" | "urgent" }) - Create a new task.
+4. "update_task" (args: { taskId: string, updates: { title?: string, description?: string, status?: "Todo" | "In Progress" | "Review" | "Completed" | "Blocked", priority?: "low" | "medium" | "high" | "urgent" } }) - Update task.
 5. "search_documents" (args: { workspaceId: string, projectId: string, query?: string }) - Find project specification documents.
 6. "read_document" (args: { documentId: string }) - Read full text chunks of a document.
 7. "search_notes" (args: { workspaceId: string, projectId: string, query?: string }) - Find project notes.
@@ -45,6 +45,9 @@ RULES:
 - Fill workspaceId and projectId parameters using the active metadata:
   * Workspace ID: "${context.workspaceId}"
   * Project ID: "${context.projectId}"
+  * Linked Project GitHub Repository: "${context.githubRepo || 'none'}"
+- GITHUB TOOL RESOLUTION RULE:
+  When the user asks for GitHub actions (like "get_commits", "list_pull_requests", "get_pull_request", "search_issues", "get_issue", "create_issue") and does NOT explicitly specify an owner/repo in their message, you MUST automatically use the Linked Project GitHub Repository: "${context.githubRepo || ''}" (splitting "owner/repo" into owner and repo parameters).
 
 You MUST respond with a raw valid JSON object matching the following structure:
 {
