@@ -54,6 +54,48 @@ export async function getProjects(workspaceId: string): Promise<Project[]> {
   return data || [];
 }
 
+export async function getWorkspaceProject(workspaceId: string): Promise<Project | null> {
+  if (!isSupabaseConfigured) {
+    return mockProjects.find((p) => p.workspace_id === workspaceId) || mockProjects[0] || null;
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Error fetching workspace project:", error);
+    return null;
+  }
+  return data;
+}
+
+export async function getOrCreateWorkspaceProject(workspaceId: string, defaultName?: string): Promise<Project | null> {
+  const existing = await getWorkspaceProject(workspaceId);
+  if (existing) return existing;
+
+  // Otherwise, lookup workspace name or use defaultName
+  let projName = defaultName || "Primary Project";
+  if (isSupabaseConfigured) {
+    try {
+      const supabase = await createClient();
+      const { data: ws } = await supabase.from("workspaces").select("name").eq("id", workspaceId).single();
+      if (ws?.name) projName = `${ws.name} Project`;
+    } catch {}
+  }
+
+  return await createProject(
+    workspaceId,
+    projName,
+    "Workspace primary development project stream."
+  );
+}
+
 export async function getProject(projectId: string): Promise<Project | null> {
   if (!isSupabaseConfigured) {
     return mockProjects.find((p) => p.id === projectId) || null;

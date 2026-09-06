@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import * as projectService from "@/lib/services/project";
+export type { Project } from "@/lib/services/project";
 
 export async function createProjectAction(
   workspaceId: string,
@@ -29,6 +30,15 @@ export async function getProjectsAction(workspaceId: string) {
     return { success: true, projects: list };
   } catch (err: any) {
     return { success: false, error: err.message || "Failed to fetch projects." };
+  }
+}
+
+export async function getWorkspaceProjectAction(workspaceId: string) {
+  try {
+    const project = await projectService.getOrCreateWorkspaceProject(workspaceId);
+    return { success: true, project };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to load workspace project." };
   }
 }
 

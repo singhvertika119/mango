@@ -26,7 +26,7 @@ import {
   DialogDescription,
   DialogFooter
 } from "@/components/ui/dialog";
-import { getProjectsAction } from "@/app/actions/project";
+import { getWorkspaceProjectAction } from "@/app/actions/project";
 import {
   getNotesAction, createNoteAction, deleteNoteAction,
   getLinksAction, createLinkAction, deleteLinkAction,
@@ -39,11 +39,6 @@ import {
 } from "@/app/actions/document";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface Project {
-  id: string;
-  name: string;
-}
 
 interface Note {
   id: string;
@@ -77,7 +72,8 @@ export default function KnowledgePage() {
   const [links, setLinks] = React.useState<LinkItem[]>([]);
   const [snippets, setSnippets] = React.useState<CodeSnippet[]>([]);
   const [documents, setDocuments] = React.useState<any[]>([]);
-  const [projects, setProjects] = React.useState<Project[]>([]);
+  const [projectId, setProjectId] = React.useState<string>("");
+  const [projectName, setProjectName] = React.useState<string>("");
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -88,7 +84,6 @@ export default function KnowledgePage() {
   // Dialog & Form State
   const [activeTab, setActiveTab] = React.useState("notes");
   const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [selectedProjectId, setSelectedProjectId] = React.useState("");
   
   // Note Form
   const [noteTitle, setNoteTitle] = React.useState("");
@@ -112,13 +107,11 @@ export default function KnowledgePage() {
     setLoading(true);
     setError(null);
 
-    // Fetch projects
-    const projectsRes = await getProjectsAction(workspaceId);
-    if (projectsRes.success && projectsRes.projects) {
-      setProjects(projectsRes.projects);
-      if (projectsRes.projects.length > 0) {
-        setSelectedProjectId(projectsRes.projects[0].id);
-      }
+    // Fetch workspace project
+    const projectRes = await getWorkspaceProjectAction(workspaceId);
+    if (projectRes.success && projectRes.project) {
+      setProjectId(projectRes.project.id);
+      setProjectName(projectRes.project.name);
     }
 
     // Fetch Notes
@@ -154,20 +147,20 @@ export default function KnowledgePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!workspaceId || !selectedProjectId) return;
+    if (!workspaceId || !projectId) return;
 
     setSubmitting(true);
     let success = false;
 
     if (activeTab === "notes" && noteTitle.trim()) {
-      const res = await createNoteAction(workspaceId, selectedProjectId, noteTitle.trim(), noteContent.trim() || null);
+      const res = await createNoteAction(workspaceId, projectId, noteTitle.trim(), noteContent.trim() || null);
       if (res.success) {
         setNoteTitle("");
         setNoteContent("");
         success = true;
       }
     } else if (activeTab === "links" && linkTitle.trim() && linkUrl.trim()) {
-      const res = await createLinkAction(workspaceId, selectedProjectId, linkTitle.trim(), linkUrl.trim(), linkDesc.trim() || null);
+      const res = await createLinkAction(workspaceId, projectId, linkTitle.trim(), linkUrl.trim(), linkDesc.trim() || null);
       if (res.success) {
         setLinkTitle("");
         setLinkUrl("");
@@ -175,7 +168,7 @@ export default function KnowledgePage() {
         success = true;
       }
     } else if (activeTab === "snippets" && snipTitle.trim() && snipCode.trim()) {
-      const res = await createCodeSnippetAction(workspaceId, selectedProjectId, snipTitle.trim(), snipDesc.trim() || null, snipCode, snipLanguage);
+      const res = await createCodeSnippetAction(workspaceId, projectId, snipTitle.trim(), snipDesc.trim() || null, snipCode, snipLanguage);
       if (res.success) {
         setSnipTitle("");
         setSnipCode("");
@@ -209,13 +202,13 @@ export default function KnowledgePage() {
 
   const handleUploadDocument = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!workspaceId || !selectedProjectId || !uploadFile) return;
+    if (!workspaceId || !projectId || !uploadFile) return;
 
     setUploading(true);
     setError(null);
     const formData = new FormData();
     formData.append("workspaceId", workspaceId);
-    formData.append("projectId", selectedProjectId);
+    formData.append("projectId", projectId);
     formData.append("file", uploadFile);
 
     const res = await uploadDocumentAction(formData);
@@ -256,8 +249,8 @@ export default function KnowledgePage() {
         <Button
           className="gap-2 cursor-pointer"
           onClick={() => {
-            if (projects.length === 0) {
-              setError("Please create a project first before adding knowledge assets.");
+            if (!projectId) {
+              setError("Workspace project not loaded. Please refresh.");
             } else {
               setDialogOpen(true);
             }
@@ -316,7 +309,6 @@ export default function KnowledgePage() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {notes.map((note) => {
-                const proj = projects.find((p) => p.id === note.project_id);
                 return (
                   <Card key={note.id} className="border-border bg-card group relative">
                     <button
@@ -327,7 +319,7 @@ export default function KnowledgePage() {
                     </button>
                     <CardHeader className="p-4 pb-2">
                       <CardTitle className="text-sm font-bold truncate pr-6">{note.title}</CardTitle>
-                      {proj && <span className="text-[10px] text-muted-foreground font-semibold">{proj.name}</span>}
+                      {projectName && <span className="text-[10px] text-muted-foreground font-semibold">{projectName}</span>}
                     </CardHeader>
                     {note.content && (
                       <CardContent className="p-4 pt-0 text-xs text-muted-foreground leading-relaxed whitespace-pre-line line-clamp-4">
@@ -358,14 +350,13 @@ export default function KnowledgePage() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
               {snippets.map((snip) => {
-                const proj = projects.find((p) => p.id === snip.project_id);
                 return (
                   <Card key={snip.id} className="border-border bg-card group flex flex-col justify-between">
                     <CardHeader className="p-4 pb-2 flex flex-row items-start justify-between">
                       <div>
                         <CardTitle className="text-sm font-bold truncate max-w-xs">{snip.title}</CardTitle>
                         <div className="flex items-center gap-2 mt-1">
-                          {proj && <span className="text-[10px] text-muted-foreground font-semibold">{proj.name}</span>}
+                          {projectName && <span className="text-[10px] text-muted-foreground font-semibold">{projectName}</span>}
                           <span className="text-[9px] font-mono bg-primary/10 text-primary px-1.5 py-0.5 rounded uppercase font-semibold">
                             {snip.language}
                           </span>
@@ -412,7 +403,6 @@ export default function KnowledgePage() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {links.map((link) => {
-                const proj = projects.find((p) => p.id === link.project_id);
                 return (
                   <Card key={link.id} className="border-border bg-card group relative flex flex-col justify-between">
                     <button
@@ -425,7 +415,7 @@ export default function KnowledgePage() {
                       <div className="flex items-center gap-1">
                         <CardTitle className="text-sm font-bold truncate pr-6">{link.title}</CardTitle>
                       </div>
-                      {proj && <span className="text-[10px] text-muted-foreground font-semibold">{proj.name}</span>}
+                      {projectName && <span className="text-[10px] text-muted-foreground font-semibold">{projectName}</span>}
                     </CardHeader>
                     <CardContent className="p-4 pt-0">
                       {link.description && (
@@ -461,28 +451,6 @@ export default function KnowledgePage() {
               </CardHeader>
               <CardContent className="p-4 pt-0">
                 <form onSubmit={handleUploadDocument} className="space-y-4">
-                  {projects.length === 0 ? (
-                    <div className="text-xs text-amber-600 bg-amber-500/10 p-3 rounded-lg border border-solid border-amber-500/20 leading-relaxed">
-                      ⚠️ No projects found in this workspace. Please create a project in the <strong>Projects</strong> tab before uploading documents.
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      <Label htmlFor="docProj">Project</Label>
-                      <select
-                        id="docProj"
-                        value={selectedProjectId}
-                        onChange={(e) => setSelectedProjectId(e.target.value)}
-                        className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-xs outline-hidden"
-                      >
-                        {projects.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
                   <div className="space-y-1.5">
                     <Label htmlFor="docFile">Select File</Label>
                     <Input
@@ -490,19 +458,21 @@ export default function KnowledgePage() {
                       type="file"
                       accept=".pdf,.txt,.md,.docx"
                       onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                      disabled={projects.length === 0}
                       required
                     />
+                    <p className="text-[10px] text-muted-foreground">
+                      Supported formats: PDF, Markdown, Text, Docx
+                    </p>
                   </div>
 
-                  <Button type="submit" className="w-full cursor-pointer" disabled={uploading || !uploadFile || projects.length === 0}>
+                  <Button type="submit" className="w-full cursor-pointer" disabled={uploading || !uploadFile}>
                     {uploading ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        <span>Uploading...</span>
+                        <span>Uploading & Parsing...</span>
                       </>
                     ) : (
-                      <span>Upload & Parse</span>
+                      <span>Upload & Parse Document</span>
                     )}
                   </Button>
                 </form>
@@ -524,7 +494,6 @@ export default function KnowledgePage() {
               ) : (
                 <div className="grid gap-4">
                   {documents.map((doc) => {
-                    const proj = projects.find((p) => p.id === doc.project_id);
                     return (
                       <Card key={doc.id} className="border-border bg-card group relative p-4 flex items-center justify-between">
                         <div className="flex items-center gap-3 min-w-0">
@@ -534,7 +503,7 @@ export default function KnowledgePage() {
                           <div className="min-w-0">
                             <h4 className="text-sm font-bold truncate max-w-xs md:max-w-md">{doc.title}</h4>
                             <div className="flex items-center gap-2 mt-1">
-                              {proj && <span className="text-[10px] text-muted-foreground font-semibold">{proj.name}</span>}
+                              {projectName && <span className="text-[10px] text-muted-foreground font-semibold">{projectName}</span>}
                               <span className="text-[9px] font-mono bg-accent px-1.5 py-0.5 rounded uppercase font-semibold">
                                 {doc.type}
                               </span>
@@ -581,36 +550,18 @@ export default function KnowledgePage() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="assetProj">Project</Label>
-                <select
-                  id="assetProj"
-                  value={selectedProjectId}
-                  onChange={(e) => setSelectedProjectId(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                >
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="assetType">Type</Label>
-                <select
-                  id="assetType"
-                  value={activeTab}
-                  onChange={(e) => setActiveTab(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                >
-                  <option value="notes">Note</option>
-                  <option value="snippets">Code Snippet</option>
-                  <option value="links">Link</option>
-                </select>
-              </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="assetType">Asset Type</Label>
+              <select
+                id="assetType"
+                value={activeTab}
+                onChange={(e) => setActiveTab(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="notes">Note</option>
+                <option value="snippets">Code Snippet</option>
+                <option value="links">Reference Link</option>
+              </select>
             </div>
 
             {/* Note Fields */}

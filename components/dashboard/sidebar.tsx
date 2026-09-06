@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   LayoutDashboard,
   FolderKanban,
+  Sliders,
   CheckSquare,
   BookOpen,
   MessageSquareCode,
@@ -52,7 +53,7 @@ interface Workspace {
 
 const navigationItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Projects", href: "/projects", icon: FolderKanban },
+  { name: "Project Settings", href: "/projects", icon: Sliders },
   { name: "Tasks", href: "/tasks", icon: CheckSquare },
   { name: "Knowledge", href: "/knowledge", icon: BookOpen },
   { name: "Agent Chat", href: "/agent", icon: MessageSquareCode },

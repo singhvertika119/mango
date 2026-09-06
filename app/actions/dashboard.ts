@@ -53,7 +53,14 @@ export async function getDashboardDataAction(workspaceId: string) {
 
     if (docsErr) throw docsErr;
 
-    // 3. Fetch GitHub Integration status
+    // 3. Fetch GitHub Integration & Project status
+    const { data: projectData } = await supabase
+      .from("projects")
+      .select("github_repo")
+      .eq("workspace_id", workspaceId)
+      .limit(1)
+      .maybeSingle();
+
     const { data: integration, error: intErr } = await supabase
       .from("integrations")
       .select("settings")
@@ -103,6 +110,9 @@ export async function getDashboardDataAction(workspaceId: string) {
       };
     });
 
+    const githubRepo = projectData?.github_repo || (integration?.settings as any)?.repo_name || "";
+    const isGithubConnected = Boolean(projectData?.github_repo || integration);
+
     return {
       success: true,
       stats: {
@@ -111,8 +121,8 @@ export async function getDashboardDataAction(workspaceId: string) {
         inProgressTasks,
         progressPercentage,
         documentsCount: docsCount || 0,
-        githubConnected: !!integration,
-        githubRepo: (integration?.settings as any)?.repo_name || "singhvertika119/mango"
+        githubConnected: isGithubConnected,
+        githubRepo: githubRepo || "Not Connected"
       },
       activities: formattedActivities
     };

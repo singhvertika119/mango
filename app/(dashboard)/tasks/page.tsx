@@ -25,14 +25,9 @@ import {
   DialogDescription,
   DialogFooter
 } from "@/components/ui/dialog";
-import { getProjectsAction } from "@/app/actions/project";
+import { getWorkspaceProjectAction } from "@/app/actions/project";
 import { createTaskAction, getTasksAction, updateTaskAction, deleteTaskAction } from "@/app/actions/task";
 import { cn } from "@/lib/utils";
-
-interface Project {
-  id: string;
-  name: string;
-}
 
 interface Task {
   id: string;
@@ -57,7 +52,8 @@ export default function TasksPage() {
   const workspaceId = searchParams.get("workspaceId");
 
   const [tasks, setTasks] = React.useState<Task[]>([]);
-  const [projects, setProjects] = React.useState<Project[]>([]);
+  const [projectId, setProjectId] = React.useState<string>("");
+  const [projectName, setProjectName] = React.useState<string>("");
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -65,7 +61,6 @@ export default function TasksPage() {
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
-  const [selectedProjectId, setSelectedProjectId] = React.useState("");
   const [status, setStatus] = React.useState<Task["status"]>("Todo");
   const [priority, setPriority] = React.useState<Task["priority"]>("medium");
   const [dueDate, setDueDate] = React.useState("");
@@ -76,13 +71,11 @@ export default function TasksPage() {
     setLoading(true);
     setError(null);
 
-    // Fetch projects first
-    const projectsRes = await getProjectsAction(workspaceId);
-    if (projectsRes.success && projectsRes.projects) {
-      setProjects(projectsRes.projects);
-      if (projectsRes.projects.length > 0) {
-        setSelectedProjectId(projectsRes.projects[0].id);
-      }
+    // Fetch workspace project
+    const projectRes = await getWorkspaceProjectAction(workspaceId);
+    if (projectRes.success && projectRes.project) {
+      setProjectId(projectRes.project.id);
+      setProjectName(projectRes.project.name);
     }
 
     // Fetch tasks
@@ -101,12 +94,12 @@ export default function TasksPage() {
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!workspaceId || !selectedProjectId || !title.trim()) return;
+    if (!workspaceId || !projectId || !title.trim()) return;
 
     setCreating(true);
     const res = await createTaskAction(
       workspaceId,
-      selectedProjectId,
+      projectId,
       title.trim(),
       description.trim() || null,
       status,
@@ -182,8 +175,8 @@ export default function TasksPage() {
         <Button
           className="gap-2 cursor-pointer"
           onClick={() => {
-            if (projects.length === 0) {
-              setError("Please create a project first before adding tasks.");
+            if (!projectId) {
+              setError("Workspace project not loaded. Please refresh.");
             } else {
               setDialogOpen(true);
             }
@@ -210,14 +203,6 @@ export default function TasksPage() {
             </div>
           ))}
         </div>
-      ) : projects.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-12 border border-dashed border-border rounded-xl bg-card text-card-foreground">
-          <FolderOpen className="w-12 h-12 text-muted-foreground stroke-1" />
-          <h3 className="mt-4 text-lg font-semibold">No Projects Found</h3>
-          <p className="text-sm text-muted-foreground mt-1 max-w-xs text-center">
-            You must create at least one project in this workspace before you can add tasks.
-          </p>
-        </div>
       ) : (
         /* Kanban Board Grid */
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-start">
@@ -238,7 +223,6 @@ export default function TasksPage() {
                 {/* Column Body Cards */}
                 <div className="space-y-3.5 flex-1">
                   {columnTasks.map((task) => {
-                    const taskProject = projects.find((p) => p.id === task.project_id);
                     return (
                       <Card
                         key={task.id}
@@ -271,9 +255,9 @@ export default function TasksPage() {
                           <CardTitle className="text-sm font-semibold leading-tight pt-1">
                             {task.title}
                           </CardTitle>
-                          {taskProject && (
+                          {projectName && (
                             <span className="text-[10px] text-muted-foreground font-medium block">
-                              {taskProject.name}
+                              {projectName}
                             </span>
                           )}
                         </CardHeader>
@@ -350,22 +334,6 @@ export default function TasksPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label htmlFor="taskProj">Project</Label>
-                <select
-                  id="taskProj"
-                  value={selectedProjectId}
-                  onChange={(e) => setSelectedProjectId(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                >
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
                 <Label htmlFor="taskStatus">Status</Label>
                 <select
                   id="taskStatus"
@@ -380,9 +348,7 @@ export default function TasksPage() {
                   ))}
                 </select>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label htmlFor="taskPrio">Priority</Label>
                 <select
@@ -397,16 +363,16 @@ export default function TasksPage() {
                   <option value="urgent">Urgent</option>
                 </select>
               </div>
+            </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="taskDue">Due Date</Label>
-                <Input
-                  id="taskDue"
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                />
-              </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="taskDue">Due Date</Label>
+              <Input
+                id="taskDue"
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+              />
             </div>
 
             <DialogFooter>

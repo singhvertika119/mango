@@ -156,7 +156,7 @@ export function Topbar() {
 
   const defaultNavs = [
     { name: "Go to Dashboard", href: `/dashboard?workspaceId=${workspaceId}`, icon: LayoutDashboard },
-    { name: "Go to Projects", href: `/projects?workspaceId=${workspaceId}`, icon: FolderKanban },
+    { name: "Go to Project Settings", href: `/projects?workspaceId=${workspaceId}`, icon: FolderKanban },
     { name: "Go to Tasks", href: `/tasks?workspaceId=${workspaceId}`, icon: CheckSquare },
     { name: "Go to Knowledge Base", href: `/knowledge?workspaceId=${workspaceId}`, icon: BookOpen },
     { name: "Go to Agent Console", href: `/agent?workspaceId=${workspaceId}`, icon: MessageSquareCode },
