@@ -46,12 +46,12 @@ export default function SettingsPage() {
         .from("workspaces")
         .select("name")
         .eq("id", workspaceId)
-        .single()
-        .then(({ data }) => {
-          if (data?.name) {
-            setWsName(data.name);
+        .then((res: any) => {
+          if (res?.data?.name) {
+            setWsName(res.data.name);
           }
-        });
+        })
+        .catch(() => {});
     }
   }, [workspaceId]);
 

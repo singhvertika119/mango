@@ -40,60 +40,76 @@ export async function getProjects(workspaceId: string): Promise<Project[]> {
     return mockProjects.filter((p) => p.workspace_id === workspaceId);
   }
 
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("workspace_id", workspaceId)
-    .order("created_at", { ascending: false });
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("projects")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: false });
 
-  if (error) {
-    console.error("Error fetching projects:", error);
-    return [];
+    if (error) {
+      console.warn("Error fetching projects, using fallback:", error.message);
+      return mockProjects.filter((p) => p.workspace_id === workspaceId);
+    }
+    return data || [];
+  } catch (err) {
+    console.warn("Supabase timeout/error in getProjects, using fallback:", err);
+    return mockProjects.filter((p) => p.workspace_id === workspaceId);
   }
-  return data || [];
 }
 
 export async function getWorkspaceProject(workspaceId: string): Promise<Project | null> {
+  const fallback = mockProjects.find((p) => p.workspace_id === workspaceId) || mockProjects[0] || null;
+
   if (!isSupabaseConfigured) {
-    return mockProjects.find((p) => p.workspace_id === workspaceId) || mockProjects[0] || null;
+    return fallback;
   }
 
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("workspace_id", workspaceId)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("projects")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
 
-  if (error) {
-    console.error("Error fetching workspace project:", error);
-    return null;
+    if (error || !data) {
+      return fallback;
+    }
+    return data;
+  } catch (err) {
+    console.warn("Supabase timeout/error in getWorkspaceProject, using fallback:", err);
+    return fallback;
   }
-  return data;
 }
 
 export async function getOrCreateWorkspaceProject(workspaceId: string, defaultName?: string): Promise<Project | null> {
-  const existing = await getWorkspaceProject(workspaceId);
-  if (existing) return existing;
+  try {
+    const existing = await getWorkspaceProject(workspaceId);
+    if (existing) return existing;
 
-  // Otherwise, lookup workspace name or use defaultName
-  let projName = defaultName || "Primary Project";
-  if (isSupabaseConfigured) {
-    try {
-      const supabase = await createClient();
-      const { data: ws } = await supabase.from("workspaces").select("name").eq("id", workspaceId).single();
-      if (ws?.name) projName = `${ws.name} Project`;
-    } catch {}
+    // Otherwise, lookup workspace name or use defaultName
+    let projName = defaultName || "Primary Project";
+    if (isSupabaseConfigured) {
+      try {
+        const supabase = await createClient();
+        const { data: ws } = await supabase.from("workspaces").select("name").eq("id", workspaceId).single();
+        if (ws?.name) projName = `${ws.name} Project`;
+      } catch {}
+    }
+
+    return await createProject(
+      workspaceId,
+      projName,
+      "Workspace primary development project stream."
+    );
+  } catch (err) {
+    console.warn("Error in getOrCreateWorkspaceProject, using fallback:", err);
+    return mockProjects[0];
   }
-
-  return await createProject(
-    workspaceId,
-    projName,
-    "Workspace primary development project stream."
-  );
 }
 
 export async function getProject(projectId: string): Promise<Project | null> {
@@ -101,18 +117,22 @@ export async function getProject(projectId: string): Promise<Project | null> {
     return mockProjects.find((p) => p.id === projectId) || null;
   }
 
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("id", projectId)
-    .single();
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("projects")
+      .select("*")
+      .eq("id", projectId)
+      .single();
 
-  if (error) {
-    console.error("Error fetching project:", error);
-    return null;
+    if (error || !data) {
+      return mockProjects.find((p) => p.id === projectId) || mockProjects[0] || null;
+    }
+    return data;
+  } catch (err) {
+    console.warn("Supabase timeout in getProject, using fallback:", err);
+    return mockProjects.find((p) => p.id === projectId) || mockProjects[0] || null;
   }
-  return data;
 }
 
 export async function createProject(
@@ -123,65 +143,76 @@ export async function createProject(
   targetDate?: string,
   githubRepo?: string | null
 ): Promise<Project | null> {
+  const fallbackProj: Project = {
+    id: `mock-proj-${Date.now()}`,
+    workspace_id: workspaceId,
+    name,
+    description,
+    status: "active",
+    github_repo: githubRepo || null,
+    start_date: startDate || new Date().toISOString(),
+    target_date: targetDate || null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+
   if (!isSupabaseConfigured) {
-    const proj: Project = {
-      id: `mock-proj-${Date.now()}`,
-      workspace_id: workspaceId,
-      name,
-      description,
-      status: "active",
-      github_repo: githubRepo || null,
-      start_date: startDate || new Date().toISOString(),
-      target_date: targetDate || null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    mockProjects.push(proj);
-    return proj;
+    mockProjects.push(fallbackProj);
+    return fallbackProj;
   }
 
-  const supabase = await createClient();
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  // Ensure profile exists in public.profiles table
   try {
-    const fullName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Developer";
-    await supabase.from("profiles").upsert(
-      {
-        id: user.id,
-        email: user.email || "",
-        full_name: fullName,
-        avatar_url: user.user_metadata?.avatar_url || null,
-        updated_at: new Date().toISOString()
-      },
-      { onConflict: "id" }
-    );
+    const supabase = await createClient();
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      mockProjects.push(fallbackProj);
+      return fallbackProj;
+    }
+
+    // Ensure profile exists in public.profiles table
+    try {
+      const fullName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Developer";
+      await supabase.from("profiles").upsert(
+        {
+          id: user.id,
+          email: user.email || "",
+          full_name: fullName,
+          avatar_url: user.user_metadata?.avatar_url || null,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: "id" }
+      );
+    } catch (err) {
+      console.warn("Profile upsert notice in createProject:", err);
+    }
+
+    const { data, error } = await supabase
+      .from("projects")
+      .insert({
+        workspace_id: workspaceId,
+        name,
+        description,
+        github_repo: githubRepo || null,
+        start_date: startDate || null,
+        target_date: targetDate || null,
+        created_by: user.id,
+        status: "active"
+      })
+      .select()
+      .single();
+
+    if (error || !data) {
+      console.warn("Error creating project in Supabase, using mock fallback:", error?.message);
+      mockProjects.push(fallbackProj);
+      return fallbackProj;
+    }
+    return data;
   } catch (err) {
-    console.warn("Profile upsert notice in createProject:", err);
+    console.warn("Supabase timeout in createProject, using mock fallback:", err);
+    mockProjects.push(fallbackProj);
+    return fallbackProj;
   }
-
-  const { data, error } = await supabase
-    .from("projects")
-    .insert({
-      workspace_id: workspaceId,
-      name,
-      description,
-      github_repo: githubRepo || null,
-      start_date: startDate || null,
-      target_date: targetDate || null,
-      created_by: user.id,
-      status: "active"
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error("Error creating project:", error);
-    return null;
-  }
-  return data;
 }
 
 export async function updateProject(

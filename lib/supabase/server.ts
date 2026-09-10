@@ -1,6 +1,33 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+const customFetch = (input: RequestInfo | URL, init?: RequestInit) => {
+  return fetch(input, {
+    ...init,
+    signal: init?.signal || AbortSignal.timeout(3000),
+  }).catch((err) => {
+    if (
+      err.name === "AbortError" ||
+      err.name === "TimeoutError" ||
+      err.message?.includes("aborted")
+    ) {
+      return new Response(
+        JSON.stringify({
+          message: "Request timed out",
+          code: "500",
+          details: "",
+          hint: "",
+        }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+    throw err;
+  });
+};
+
 export async function createClient() {
   const cookieStore = await cookies();
 
@@ -19,10 +46,11 @@ export async function createClient() {
             });
           } catch (error) {
             // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
           }
         },
+      },
+      global: {
+        fetch: customFetch,
       },
     }
   );

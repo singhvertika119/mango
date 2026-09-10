@@ -59,23 +59,29 @@ function DashboardContent() {
 
   React.useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (user) {
-        try {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("full_name")
-            .eq("id", user.id)
-            .single();
-          if (profile?.full_name) {
-            const firstName = profile.full_name.split(" ")[0];
-            setUserName(firstName);
+    supabase.auth
+      .getUser()
+      .then(async (res: any) => {
+        const user = res?.data?.user;
+        if (user) {
+          try {
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("full_name")
+              .eq("id", user.id)
+              .single();
+            if (profile?.full_name) {
+              const firstName = (profile.full_name as string).split(" ")[0];
+              setUserName(firstName);
+            }
+          } catch (e) {
+            console.error("Failed to load user name:", e);
           }
-        } catch (e) {
-          console.error("Failed to load user name:", e);
         }
-      }
-    });
+      })
+      .catch((err: any) => {
+        console.warn("Could not retrieve user in dashboard:", err?.message);
+      });
   }, []);
 
   const loadData = React.useCallback(async () => {

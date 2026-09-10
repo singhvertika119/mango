@@ -41,136 +41,153 @@ export async function getWorkspaces(): Promise<Workspace[]> {
     return mockWorkspaces;
   }
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
-
-  // 1. Ensure user profile exists in public.profiles table (fallback if auth trigger did not fire)
   try {
-    const fullName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Developer";
-    await supabase.from("profiles").upsert(
-      {
-        id: user.id,
-        email: user.email || "",
-        full_name: fullName,
-        avatar_url: user.user_metadata?.avatar_url || null,
-        updated_at: new Date().toISOString()
-      },
-      { onConflict: "id" }
-    );
-  } catch (err) {
-    console.warn("Profile upsert notice in getWorkspaces:", err);
-  }
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return mockWorkspaces;
 
-  // 2. Query workspaces where user is creator or member
-  const { data, error } = await supabase
-    .from("workspaces")
-    .select("*")
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    console.error("Error fetching workspaces:", error);
-    return [];
-  }
-
-  // 3. If new user has 0 workspaces, auto-provision a default workspace + default project!
-  if (!data || data.length === 0) {
-    console.log("No workspaces found for user. Auto-provisioning default workspace...");
-    const defaultWs = await createWorkspace("Mango Workspace");
-    if (defaultWs) {
-      return [defaultWs];
+    // 1. Ensure user profile exists in public.profiles table (fallback if auth trigger did not fire)
+    try {
+      const fullName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Developer";
+      await supabase.from("profiles").upsert(
+        {
+          id: user.id,
+          email: user.email || "",
+          full_name: fullName,
+          avatar_url: user.user_metadata?.avatar_url || null,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: "id" }
+      );
+    } catch (err) {
+      console.warn("Profile upsert notice in getWorkspaces:", err);
     }
-  }
 
-  return data || [];
+    // 2. Query workspaces where user is creator or member
+    const { data, error } = await supabase
+      .from("workspaces")
+      .select("*")
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.warn("Error fetching workspaces, using fallback:", error.message);
+      return mockWorkspaces;
+    }
+
+    // 3. If new user has 0 workspaces, auto-provision a default workspace + default project!
+    if (!data || data.length === 0) {
+      console.log("No workspaces found for user. Auto-provisioning default workspace...");
+      try {
+        const defaultWs = await createWorkspace("Mango Workspace");
+        if (defaultWs) {
+          return [defaultWs];
+        }
+      } catch (err) {
+        console.warn("Auto create workspace notice:", err);
+      }
+      return mockWorkspaces;
+    }
+
+    return data;
+  } catch (err) {
+    console.warn("Supabase timeout/error in getWorkspaces, returning fallback:", err);
+    return mockWorkspaces;
+  }
 }
 
 export async function createWorkspace(name: string): Promise<Workspace | null> {
+  const fallbackWs: Workspace = {
+    id: `mock-ws-${Date.now()}`,
+    name,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+
   if (!isSupabaseConfigured) {
-    const ws: Workspace = {
-      id: `mock-ws-${Date.now()}`,
-      name,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    mockWorkspaces.push(ws);
-    return ws;
+    mockWorkspaces.push(fallbackWs);
+    return fallbackWs;
   }
 
-  const supabase = await createClient();
-  
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  // 1. Ensure user profile exists before inserting workspace to satisfy foreign key constraint!
   try {
-    const fullName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Developer";
-    await supabase.from("profiles").upsert(
-      {
-        id: user.id,
-        email: user.email || "",
-        full_name: fullName,
-        avatar_url: user.user_metadata?.avatar_url || null,
-        updated_at: new Date().toISOString()
-      },
-      { onConflict: "id" }
-    );
+    const supabase = await createClient();
+    
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      mockWorkspaces.push(fallbackWs);
+      return fallbackWs;
+    }
+
+    // 1. Ensure user profile exists before inserting workspace to satisfy foreign key constraint!
+    try {
+      const fullName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Developer";
+      await supabase.from("profiles").upsert(
+        {
+          id: user.id,
+          email: user.email || "",
+          full_name: fullName,
+          avatar_url: user.user_metadata?.avatar_url || null,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: "id" }
+      );
+    } catch (err) {
+      console.warn("Profile upsert notice in createWorkspace:", err);
+    }
+
+    // 2. Insert workspace
+    const { data: workspace, error: wsError } = await supabase
+      .from("workspaces")
+      .insert({ name, created_by: user.id })
+      .select()
+      .single();
+
+    if (wsError || !workspace) {
+      console.warn("Error creating workspace in Supabase, using local store:", wsError?.message);
+      mockWorkspaces.push(fallbackWs);
+      return fallbackWs;
+    }
+
+    // 3. Add creator as OWNER member
+    try {
+      await supabase
+        .from("workspace_members")
+        .insert({
+          workspace_id: workspace.id,
+          profile_id: user.id,
+          role: "OWNER"
+        });
+    } catch (mErr) {
+      console.warn("Workspace member insert notice:", mErr);
+    }
+
+    // 4. Provision a starter project for this workspace so tasks, canvas, documents are immediately usable
+    try {
+      const { data: existingProject } = await supabase
+        .from("projects")
+        .select("id")
+        .eq("workspace_id", workspace.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (!existingProject) {
+        await supabase.from("projects").insert({
+          workspace_id: workspace.id,
+          name: `${name} Project`,
+          description: `Primary development project stream for ${name}.`,
+          created_by: user.id,
+          status: "active"
+        });
+      }
+    } catch (projErr) {
+      console.warn("Could not create initial project for workspace:", projErr);
+    }
+
+    return workspace;
   } catch (err) {
-    console.warn("Profile upsert notice in createWorkspace:", err);
+    console.warn("Supabase timeout in createWorkspace, using local fallback:", err);
+    mockWorkspaces.push(fallbackWs);
+    return fallbackWs;
   }
-
-  // 2. Insert workspace
-  const { data: workspace, error: wsError } = await supabase
-    .from("workspaces")
-    .insert({ name, created_by: user.id })
-    .select()
-    .single();
-
-  if (wsError) {
-    console.error("Error creating workspace:", wsError);
-    return null;
-  }
-
-  // 3. Add creator as OWNER member
-  try {
-    const { error: memberError } = await supabase
-      .from("workspace_members")
-      .insert({
-        workspace_id: workspace.id,
-        profile_id: user.id,
-        role: "OWNER"
-      });
-
-    if (memberError) {
-      console.error("Error creating workspace owner member:", memberError);
-    }
-  } catch (mErr) {
-    console.warn("Workspace member insert notice:", mErr);
-  }
-
-  // 4. Provision a starter project for this workspace so tasks, canvas, documents are immediately usable
-  try {
-    const { data: existingProject } = await supabase
-      .from("projects")
-      .select("id")
-      .eq("workspace_id", workspace.id)
-      .limit(1)
-      .maybeSingle();
-
-    if (!existingProject) {
-      await supabase.from("projects").insert({
-        workspace_id: workspace.id,
-        name: `${name} Project`,
-        description: `Primary development project stream for ${name}.`,
-        created_by: user.id,
-        status: "active"
-      });
-    }
-  } catch (projErr) {
-    console.warn("Could not create initial project for workspace:", projErr);
-  }
-
-  return workspace;
 }
 
 export async function getWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[]> {

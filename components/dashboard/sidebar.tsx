@@ -137,29 +137,35 @@ export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCo
 
   React.useEffect(() => {
     // Get user details
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (user?.email) {
-        setUserEmail(user.email);
-        try {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("full_name, avatar_url")
-            .eq("id", user.id)
-            .single();
-          if (profile?.full_name) {
-            setFullName(profile.full_name);
+    supabase.auth
+      .getUser()
+      .then(async (res: any) => {
+        const user = res?.data?.user;
+        if (user?.email) {
+          setUserEmail(user.email);
+          try {
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("full_name, avatar_url")
+              .eq("id", user.id)
+              .single();
+            if (profile?.full_name) {
+              setFullName(profile.full_name);
+            }
+            if (profile?.avatar_url) {
+              setAvatarUrl(profile.avatar_url);
+            }
+          } catch (e) {
+            console.log("Offline mode, using default profile name.");
           }
-          if (profile?.avatar_url) {
-            setAvatarUrl(profile.avatar_url);
-          }
-        } catch (e) {
-          console.log("Offline mode, using default profile name.");
         }
-      }
-    });
+      })
+      .catch((err: any) => {
+        console.warn("Could not retrieve user session:", err?.message);
+      });
 
     loadWorkspaces();
-  }, [loadWorkspaces, supabase.auth]);
+  }, [loadWorkspaces]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();

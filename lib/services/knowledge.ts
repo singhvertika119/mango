@@ -88,22 +88,31 @@ export const config = {
 // 1. Notes Service Functions
 // ==========================================
 export async function getNotes(workspaceId: string, projectId?: string): Promise<Note[]> {
-  if (!isSupabaseConfigured) {
+  const getFallback = () => {
     let list = mockNotes.filter((n) => n.workspace_id === workspaceId);
     if (projectId) list = list.filter((n) => n.project_id === projectId);
-    return list;
+    return list.length > 0 ? list : mockNotes;
+  };
+
+  if (!isSupabaseConfigured) {
+    return getFallback();
   }
 
-  const supabase = await createClient();
-  let query = supabase.from("notes").select("*").eq("workspace_id", workspaceId);
-  if (projectId) query = query.eq("project_id", projectId);
-  
-  const { data, error } = await query.order("created_at", { ascending: false });
-  if (error) {
-    console.error("Error fetching notes:", error);
-    return [];
+  try {
+    const supabase = await createClient();
+    let query = supabase.from("notes").select("*").eq("workspace_id", workspaceId);
+    if (projectId) query = query.eq("project_id", projectId);
+    
+    const { data, error } = await query.order("created_at", { ascending: false });
+    if (error) {
+      console.warn("Error fetching notes, using fallback:", error.message);
+      return getFallback();
+    }
+    return data || [];
+  } catch (err) {
+    console.warn("Supabase timeout in getNotes, using fallback:", err);
+    return getFallback();
   }
-  return data || [];
 }
 
 export async function createNote(

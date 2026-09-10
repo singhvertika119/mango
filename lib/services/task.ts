@@ -51,31 +51,40 @@ let mockTasks: Task[] = [
 ];
 
 export async function getTasks(workspaceId: string, projectId?: string): Promise<Task[]> {
-  if (!isSupabaseConfigured) {
+  const getFallback = () => {
     let list = mockTasks.filter((t) => t.workspace_id === workspaceId);
     if (projectId) {
       list = list.filter((t) => t.project_id === projectId);
     }
     return list;
+  };
+
+  if (!isSupabaseConfigured) {
+    return getFallback();
   }
 
-  const supabase = await createClient();
-  let query = supabase
-    .from("tasks")
-    .select("*")
-    .eq("workspace_id", workspaceId);
+  try {
+    const supabase = await createClient();
+    let query = supabase
+      .from("tasks")
+      .select("*")
+      .eq("workspace_id", workspaceId);
 
-  if (projectId) {
-    query = query.eq("project_id", projectId);
+    if (projectId) {
+      query = query.eq("project_id", projectId);
+    }
+
+    const { data, error } = await query.order("created_at", { ascending: false });
+
+    if (error) {
+      console.warn("Error fetching tasks, using fallback:", error.message);
+      return getFallback();
+    }
+    return (data as any[]) || [];
+  } catch (err) {
+    console.warn("Supabase timeout in getTasks, using fallback:", err);
+    return getFallback();
   }
-
-  const { data, error } = await query.order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("Error fetching tasks:", error);
-    return [];
-  }
-  return (data as any[]) || [];
 }
 
 export function normalizeTaskStatus(status?: string | null): Task["status"] {

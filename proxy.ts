@@ -1,8 +1,7 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({
+  const response = NextResponse.next({
     request: {
       headers: request.headers,
     },
@@ -10,7 +9,7 @@ export async function proxy(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // 1. Skip proxy auth check for static assets, public auth callbacks, and Server Actions (which have their own auth guards)
+  // 1. Skip auth check for static assets, public auth callbacks, and Server Actions
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/auth") ||
@@ -38,67 +37,24 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/integrations") ||
     pathname.startsWith("/settings");
 
-  // Fast path: If on dashboard route and no auth cookies exist, redirect to /login immediately without network delay
+  // Fast path: If on dashboard route and no auth cookies exist, redirect to /login immediately
   if (!hasAuthCookie && isDashboardPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
-  // Fast path: If on auth page and no auth cookie, allow immediately
-  if (!hasAuthCookie && isAuthPage) {
-    return response;
-  }
-
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    return response;
-  }
-
-  try {
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          getAll() {
-            return request.cookies.getAll();
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-            response = NextResponse.next({
-              request: {
-                headers: request.headers,
-              },
-            });
-            cookiesToSet.forEach(({ name, value, options }) =>
-              response.cookies.set(name, value, options)
-            );
-          },
-        },
-      }
-    );
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user && isDashboardPage) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/login";
-      return NextResponse.redirect(url);
-    }
-
-    if (user && isAuthPage) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/dashboard";
-      return NextResponse.redirect(url);
-    }
-  } catch (err) {
-    console.warn("Proxy auth check error:", err);
+  // If on auth page (login/signup) and already authenticated, redirect to /dashboard
+  if (hasAuthCookie && isAuthPage) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/dashboard";
+    return NextResponse.redirect(url);
   }
 
   return response;
 }
+
+export const middleware = proxy;
 
 export const config = {
   matcher: [
