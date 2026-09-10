@@ -214,7 +214,7 @@ export default function SettingsPage() {
                   <span>Delete Workspace?</span>
                 </DialogTitle>
                 <DialogDescription className="pt-2 text-xs font-medium leading-relaxed">
-                  Are you absolutely sure you want to delete **{wsName}**? All projects, task boards, parsed files, and notes in this sandbox will be permanently purged.
+                  Are you absolutely sure you want to delete **{wsName}**? All projects, task boards, parsed files, and notes in this workspace will be permanently purged.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter className="pt-2">

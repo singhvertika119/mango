@@ -8,7 +8,7 @@ const steps = [
   {
     icon: Layers,
     title: "Dynamic Workspaces",
-    description: "Use the top workspace sidebar switcher to swap between multiple developer sandboxes and project environments seamlessly.",
+    description: "Use the top workspace sidebar switcher to swap between multiple developer workspaces and project environments seamlessly.",
     color: "text-blue-500 bg-blue-500/10 border-blue-500/20"
   },
   {
