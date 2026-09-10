@@ -2,10 +2,15 @@ import { createBrowserClient } from "@supabase/ssr";
 
 let client: ReturnType<typeof createBrowserClient> | undefined;
 
+function getCleanSupabaseUrl(): string {
+  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+  return raw.replace(/\/rest\/v1\/?$/, "").replace(/\/+$/, "");
+}
+
 const customFetch = (input: RequestInfo | URL, init?: RequestInit) => {
   return fetch(input, {
     ...init,
-    signal: init?.signal || AbortSignal.timeout(1000),
+    signal: init?.signal || AbortSignal.timeout(3000),
   }).catch((err) => {
     if (
       err.name === "AbortError" ||
@@ -29,24 +34,19 @@ const customFetch = (input: RequestInfo | URL, init?: RequestInit) => {
 };
 
 export function createClient() {
+  const url = getCleanSupabaseUrl();
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key";
+
   if (typeof window === "undefined") {
-    return createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key",
-      {
-        global: { fetch: customFetch },
-      }
-    );
+    return createBrowserClient(url, anonKey, {
+      global: { fetch: customFetch },
+    });
   }
 
   if (!client) {
-    client = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key",
-      {
-        global: { fetch: customFetch },
-      }
-    );
+    client = createBrowserClient(url, anonKey, {
+      global: { fetch: customFetch },
+    });
   }
   return client;
 }
