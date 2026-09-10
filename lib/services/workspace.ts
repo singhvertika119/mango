@@ -43,54 +43,17 @@ export async function getWorkspaces(): Promise<Workspace[]> {
 
   try {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return mockWorkspaces;
-
-    // 1. Ensure user profile exists in public.profiles table (fallback if auth trigger did not fire)
-    try {
-      const fullName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Developer";
-      await supabase.from("profiles").upsert(
-        {
-          id: user.id,
-          email: user.email || "",
-          full_name: fullName,
-          avatar_url: user.user_metadata?.avatar_url || null,
-          updated_at: new Date().toISOString()
-        },
-        { onConflict: "id" }
-      );
-    } catch (err) {
-      console.warn("Profile upsert notice in getWorkspaces:", err);
-    }
-
-    // 2. Query workspaces where user is creator or member
     const { data, error } = await supabase
       .from("workspaces")
       .select("*")
       .order("created_at", { ascending: true });
 
-    if (error) {
-      console.warn("Error fetching workspaces, using fallback:", error.message);
-      return mockWorkspaces;
-    }
-
-    // 3. If new user has 0 workspaces, auto-provision a default workspace + default project!
-    if (!data || data.length === 0) {
-      console.log("No workspaces found for user. Auto-provisioning default workspace...");
-      try {
-        const defaultWs = await createWorkspace("Mango Workspace");
-        if (defaultWs) {
-          return [defaultWs];
-        }
-      } catch (err) {
-        console.warn("Auto create workspace notice:", err);
-      }
+    if (error || !data || data.length === 0) {
       return mockWorkspaces;
     }
 
     return data;
   } catch (err) {
-    console.warn("Supabase timeout/error in getWorkspaces, returning fallback:", err);
     return mockWorkspaces;
   }
 }

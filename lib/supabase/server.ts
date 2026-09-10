@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 const customFetch = (input: RequestInfo | URL, init?: RequestInit) => {
   return fetch(input, {
     ...init,
-    signal: init?.signal || AbortSignal.timeout(3000),
+    signal: init?.signal || AbortSignal.timeout(1000),
   }).catch((err) => {
     if (
       err.name === "AbortError" ||
@@ -14,12 +14,11 @@ const customFetch = (input: RequestInfo | URL, init?: RequestInit) => {
       return new Response(
         JSON.stringify({
           message: "Request timed out",
-          code: "500",
-          details: "",
-          hint: "",
+          code: "408",
+          error: "request_timeout",
         }),
         {
-          status: 500,
+          status: 408,
           headers: { "Content-Type": "application/json" },
         }
       );

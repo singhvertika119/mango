@@ -152,7 +152,7 @@ export function Topbar() {
     }, 200);
 
     return () => clearTimeout(delayDebounce);
-  }, [searchQuery, paletteOpen, workspaceId, supabase]);
+  }, [searchQuery, paletteOpen, workspaceId]);
 
   const defaultNavs = [
     { name: "Go to Dashboard", href: `/dashboard?workspaceId=${workspaceId}`, icon: LayoutDashboard },
@@ -211,7 +211,7 @@ export function Topbar() {
       supabase.removeChannel(channel);
       clearInterval(interval);
     };
-  }, [workspaceId, loadNotifications, supabase]);
+  }, [workspaceId, loadNotifications]);
 
   // Click outside to close dropdown
   React.useEffect(() => {
