@@ -2,35 +2,9 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 function getCleanSupabaseUrl(): string {
-  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://ndnnbohgwuhnqmnnxtre.supabase.co";
   return raw.replace(/\/rest\/v1\/?$/, "").replace(/\/+$/, "");
 }
-
-const customFetch = (input: RequestInfo | URL, init?: RequestInit) => {
-  return fetch(input, {
-    ...init,
-    signal: init?.signal || AbortSignal.timeout(3000),
-  }).catch((err) => {
-    if (
-      err.name === "AbortError" ||
-      err.name === "TimeoutError" ||
-      err.message?.includes("aborted")
-    ) {
-      return new Response(
-        JSON.stringify({
-          message: "Request timed out",
-          code: "408",
-          error: "request_timeout",
-        }),
-        {
-          status: 408,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
-    throw err;
-  });
-};
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -52,8 +26,6 @@ export async function createClient() {
         }
       },
     },
-    global: {
-      fetch: customFetch,
-    },
   });
 }
+

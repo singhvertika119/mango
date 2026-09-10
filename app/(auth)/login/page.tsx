@@ -47,8 +47,7 @@ function LoginForm() {
           setError(signInError.message);
         }
       } else {
-        router.refresh();
-        router.push("/dashboard");
+        window.location.href = "/dashboard";
       }
     } catch (err: any) {
       setError(err?.message || "An unexpected error occurred during login.");

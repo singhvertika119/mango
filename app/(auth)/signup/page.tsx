@@ -49,7 +49,15 @@ function SignupForm() {
 
       if (signUpError) {
         setError(signUpError.message);
-      } else if (data?.session) {
+      } else if (data?.session && data?.user) {
+        try {
+          await supabase.from("profiles").upsert({
+            id: data.user.id,
+            email: email.trim(),
+            full_name: fullName.trim(),
+            updated_at: new Date().toISOString()
+          });
+        } catch (e) {}
         router.refresh();
         router.push("/dashboard");
       } else {

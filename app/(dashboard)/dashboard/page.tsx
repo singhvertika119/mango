@@ -22,6 +22,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { getDashboardDataAction } from "@/app/actions/dashboard";
+import { createWorkspaceAction, getWorkspacesAction } from "@/app/actions/workspace";
 import { createClient } from "@/lib/supabase/client";
 
 const mockInsights = [
@@ -55,7 +56,9 @@ function DashboardContent() {
   const [activities, setActivities] = React.useState<Activity[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [userName, setUserName] = React.useState("Developer");
+  const [userName, setUserName] = React.useState("");
+  const [availableWorkspaces, setAvailableWorkspaces] = React.useState<any[]>([]);
+  const [creatingWorkspace, setCreatingWorkspace] = React.useState(false);
 
   React.useEffect(() => {
     const supabase = createClient();
@@ -64,6 +67,7 @@ function DashboardContent() {
       .then(async (res: any) => {
         const user = res?.data?.user;
         if (user) {
+          let name = user.user_metadata?.full_name || user.user_metadata?.name || "";
           try {
             const { data: profile } = await supabase
               .from("profiles")
@@ -71,12 +75,19 @@ function DashboardContent() {
               .eq("id", user.id)
               .single();
             if (profile?.full_name) {
-              const firstName = (profile.full_name as string).split(" ")[0];
-              setUserName(firstName);
+              name = profile.full_name;
             }
           } catch (e) {
-            console.error("Failed to load user name:", e);
+            // ignore
           }
+
+          if (!name && user.email) {
+            const prefix = user.email.split("@")[0];
+            name = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+          }
+
+          const firstName = (name || "there").split(" ")[0];
+          setUserName(firstName);
         }
       })
       .catch((err: any) => {
@@ -85,7 +96,15 @@ function DashboardContent() {
   }, []);
 
   const loadData = React.useCallback(async () => {
-    if (!workspaceId) return;
+    if (!workspaceId) {
+      // Load available workspaces for the empty state
+      const wsRes = await getWorkspacesAction();
+      if (wsRes.success && wsRes.workspaces) {
+        setAvailableWorkspaces(wsRes.workspaces);
+      }
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     const res = await getDashboardDataAction(workspaceId);
@@ -102,14 +121,73 @@ function DashboardContent() {
     loadData();
   }, [loadData]);
 
+  const handleQuickCreateWorkspace = async () => {
+    setCreatingWorkspace(true);
+    const res = await createWorkspaceAction("My Workspace");
+    setCreatingWorkspace(false);
+    if (res.success && res.workspace) {
+      router.push(`/dashboard?workspaceId=${res.workspace.id}`);
+    }
+  };
+
   if (!workspaceId) {
     return (
-      <div className="flex flex-col items-center justify-center p-12 text-center h-[50vh]">
-        <Layers className="w-12 h-12 text-muted-foreground stroke-1 animate-pulse" />
-        <h3 className="mt-4 text-lg font-semibold">Select a workspace</h3>
-        <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-          Select or create a workspace from the sidebar switcher to load your project dashboard metrics.
+      <div className="flex flex-col items-center justify-center p-12 text-center min-h-[60vh] max-w-lg mx-auto">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500/20 to-yellow-400/20 text-primary flex items-center justify-center mb-4 border border-amber-500/30">
+          <Layers className="w-8 h-8 text-primary stroke-2" />
+        </div>
+        <h3 className="text-xl font-bold tracking-tight text-foreground">Welcome to Mango{userName ? `, ${userName}` : ""}!</h3>
+        <p className="text-sm text-muted-foreground mt-2 max-w-sm">
+          Select an existing workspace or create a new workspace to start tracking tasks, managing docs, and activating AI agents.
         </p>
+
+        {availableWorkspaces.length > 0 ? (
+          <div className="w-full mt-6 space-y-2">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Your Workspaces</span>
+            <div className="grid gap-2">
+              {availableWorkspaces.map((ws) => (
+                <button
+                  key={ws.id}
+                  onClick={() => router.push(`/dashboard?workspaceId=${ws.id}`)}
+                  className="flex items-center justify-between p-3 rounded-xl bg-card hover:bg-accent border border-border transition-all cursor-pointer text-left group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary font-bold flex items-center justify-center text-xs">
+                      {ws.name.substring(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">{ws.name}</h4>
+                      <p className="text-xs text-muted-foreground">Click to enter workspace</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                </button>
+              ))}
+            </div>
+            <div className="pt-3">
+              <Button
+                variant="outline"
+                onClick={handleQuickCreateWorkspace}
+                disabled={creatingWorkspace}
+                className="w-full text-xs font-semibold gap-2 h-9 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{creatingWorkspace ? "Creating..." : "Create Another Workspace"}</span>
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-6">
+            <Button
+              onClick={handleQuickCreateWorkspace}
+              disabled={creatingWorkspace}
+              className="gap-2 font-semibold text-sm px-6 h-10 cursor-pointer shadow-md shadow-primary/20"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{creatingWorkspace ? "Creating Workspace..." : "Create My First Workspace"}</span>
+            </Button>
+          </div>
+        )}
       </div>
     );
   }
@@ -126,11 +204,11 @@ function DashboardContent() {
   return (
     <div className="space-y-6">
       {/* Welcome Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 bg-linear-to-r from-primary/10 via-primary/5 to-card rounded-2xl border border-primary/10 border-solid shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 bg-gradient-to-r from-primary/10 via-primary/5 to-card rounded-2xl border border-primary/10 border-solid shadow-xs">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Welcome back, {userName}!</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Welcome back{userName ? `, ${userName}` : ""}!</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Workspace Mango is active. The AI project agent is ready to assist you.
+            Mango workspace is active. The AI project agent is ready to assist you.
           </p>
         </div>
         <div className="flex gap-2">

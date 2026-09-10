@@ -63,7 +63,8 @@ export async function createWorkspace(name: string): Promise<Workspace | null> {
     }
 
     // 1. Ensure user profile exists
-    const fullName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Developer";
+    const emailPrefix = user.email ? (user.email.split("@")[0].charAt(0).toUpperCase() + user.email.split("@")[0].slice(1)) : "User";
+    const fullName = user.user_metadata?.full_name || user.user_metadata?.name || emailPrefix;
     await supabase.from("profiles").upsert(
       {
         id: user.id,
