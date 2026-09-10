@@ -145,6 +145,23 @@ export async function createProject(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
+  // Ensure profile exists in public.profiles table
+  try {
+    const fullName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Developer";
+    await supabase.from("profiles").upsert(
+      {
+        id: user.id,
+        email: user.email || "",
+        full_name: fullName,
+        avatar_url: user.user_metadata?.avatar_url || null,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: "id" }
+    );
+  } catch (err) {
+    console.warn("Profile upsert notice in createProject:", err);
+  }
+
   const { data, error } = await supabase
     .from("projects")
     .insert({

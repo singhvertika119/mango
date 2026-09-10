@@ -32,6 +32,7 @@ import {
   deleteCanvasDocumentAction
 } from "@/app/actions/canvas";
 import { getWorkspacesAction } from "@/app/actions/workspace";
+import { getWorkspaceProjectAction } from "@/app/actions/project";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -41,11 +42,11 @@ function CanvasViewClient() {
   const router = useRouter();
 
   const urlWorkspaceId = searchParams.get("workspaceId");
-  const urlProjectId = searchParams.get("projectId") || "default-proj";
+  const urlProjectId = searchParams.get("projectId");
   const urlDocId = searchParams.get("docId");
 
   const [workspaceId, setWorkspaceId] = React.useState<string>(urlWorkspaceId || "default-ws");
-  const [projectId, setProjectId] = React.useState<string>(urlProjectId);
+  const [projectId, setProjectId] = React.useState<string>(urlProjectId || "default-proj");
 
   // Document Management State
   const [documents, setDocuments] = React.useState<CanvasDocument[]>([]);
@@ -84,8 +85,20 @@ function CanvasViewClient() {
 
       setWorkspaceId(targetWsId);
 
+      // Fetch the workspace's project ID
+      let targetProjId = urlProjectId;
+      if (!targetProjId || targetProjId === "default-proj") {
+        const projRes = await getWorkspaceProjectAction(targetWsId);
+        if (projRes.success && projRes.project) {
+          targetProjId = projRes.project.id;
+        } else {
+          targetProjId = "default-proj";
+        }
+      }
+      setProjectId(targetProjId);
+
       // Fetch canvas boards
-      const docsRes = await getCanvasDocumentsAction(targetWsId, projectId);
+      const docsRes = await getCanvasDocumentsAction(targetWsId, targetProjId);
       if (docsRes.success && docsRes.documents && docsRes.documents.length > 0) {
         setDocuments(docsRes.documents);
         const selected = urlDocId
@@ -96,7 +109,7 @@ function CanvasViewClient() {
         // Create initial default board if none exists
         const createRes = await createCanvasDocumentAction(
           targetWsId,
-          projectId,
+          targetProjId,
           "System Architecture & Specs"
         );
         if (createRes.success && createRes.document) {
@@ -109,7 +122,7 @@ function CanvasViewClient() {
     }
 
     init();
-  }, [urlWorkspaceId, urlProjectId, urlDocId, projectId]);
+  }, [urlWorkspaceId, urlProjectId, urlDocId]);
 
   // 2. Debounced Auto-Save Handler
   const triggerAutoSave = React.useCallback((updatedDoc: CanvasDocument) => {

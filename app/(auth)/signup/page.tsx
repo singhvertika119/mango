@@ -20,6 +20,8 @@ export default function SignupPage() {
   const [success, setSuccess] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
 
+  const [submittedEmail, setSubmittedEmail] = React.useState("");
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -27,19 +29,25 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      const { error: signUpError } = await supabase.auth.signUp({
-        email,
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: email.trim(),
         password,
         options: {
           data: {
-            full_name: fullName,
+            full_name: fullName.trim(),
           },
         },
       });
 
       if (signUpError) {
         setError(signUpError.message);
+      } else if (data?.session) {
+        // Active session granted immediately (Email Confirmation disabled in Supabase)
+        router.refresh();
+        router.push("/dashboard");
       } else {
+        // Confirmation email sent
+        setSubmittedEmail(email.trim());
         setSuccess(true);
         setFullName("");
         setEmail("");
@@ -58,11 +66,11 @@ export default function SignupPage() {
         <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl pointer-events-none" />
         
         <CardHeader className="space-y-1 flex flex-col items-center text-center">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary text-primary-foreground font-bold shadow-md shadow-primary/20 mb-2">
-            W
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-400 text-white font-black shadow-md shadow-amber-500/20 mb-2">
+            m
           </div>
-          <CardTitle className="text-xl font-bold tracking-tight">Create Workspace Account</CardTitle>
-          <CardDescription>Get started by setting up your developer profile</CardDescription>
+          <CardTitle className="text-xl font-bold tracking-tight">Create Mango Account</CardTitle>
+          <CardDescription>Get started by setting up your developer workspace</CardDescription>
         </CardHeader>
         
         <form onSubmit={handleSignup}>
@@ -75,11 +83,16 @@ export default function SignupPage() {
             )}
 
             {success && (
-              <div className="flex items-start gap-2.5 p-3 rounded-lg bg-emerald-500/10 text-emerald-600 text-sm border border-emerald-500/20 border-solid">
+              <div className="flex items-start gap-2.5 p-3 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs border border-emerald-500/20 border-solid space-y-1">
                 <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-500" />
                 <div>
-                  <span className="font-semibold block">Registration successful!</span>
-                  <span>Please check your email inbox to confirm your account subscription.</span>
+                  <span className="font-semibold block text-sm">Account created successfully!</span>
+                  <p className="mt-0.5 leading-relaxed">
+                    A confirmation email has been sent to <strong>{submittedEmail || "your email"}</strong>. Please click the link to activate your account, then{" "}
+                    <Link href="/login" className="underline font-bold text-primary">
+                      Sign In here
+                    </Link>.
+                  </p>
                 </div>
               </div>
             )}

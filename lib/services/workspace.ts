@@ -42,15 +42,46 @@ export async function getWorkspaces(): Promise<Workspace[]> {
   }
 
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  // 1. Ensure user profile exists in public.profiles table (fallback if auth trigger did not fire)
+  try {
+    const fullName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Developer";
+    await supabase.from("profiles").upsert(
+      {
+        id: user.id,
+        email: user.email || "",
+        full_name: fullName,
+        avatar_url: user.user_metadata?.avatar_url || null,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: "id" }
+    );
+  } catch (err) {
+    console.warn("Profile upsert notice in getWorkspaces:", err);
+  }
+
+  // 2. Query workspaces where user is creator or member
   const { data, error } = await supabase
     .from("workspaces")
     .select("*")
-    .order("name", { ascending: true });
+    .order("created_at", { ascending: true });
 
   if (error) {
     console.error("Error fetching workspaces:", error);
     return [];
   }
+
+  // 3. If new user has 0 workspaces, auto-provision a default workspace + default project!
+  if (!data || data.length === 0) {
+    console.log("No workspaces found for user. Auto-provisioning default workspace...");
+    const defaultWs = await createWorkspace("Mango Workspace");
+    if (defaultWs) {
+      return [defaultWs];
+    }
+  }
+
   return data || [];
 }
 
@@ -71,7 +102,24 @@ export async function createWorkspace(name: string): Promise<Workspace | null> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  // Insert workspace
+  // 1. Ensure user profile exists before inserting workspace to satisfy foreign key constraint!
+  try {
+    const fullName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Developer";
+    await supabase.from("profiles").upsert(
+      {
+        id: user.id,
+        email: user.email || "",
+        full_name: fullName,
+        avatar_url: user.user_metadata?.avatar_url || null,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: "id" }
+    );
+  } catch (err) {
+    console.warn("Profile upsert notice in createWorkspace:", err);
+  }
+
+  // 2. Insert workspace
   const { data: workspace, error: wsError } = await supabase
     .from("workspaces")
     .insert({ name, created_by: user.id })
@@ -83,17 +131,43 @@ export async function createWorkspace(name: string): Promise<Workspace | null> {
     return null;
   }
 
-  // Also add creator as OWNER member
-  const { error: memberError } = await supabase
-    .from("workspace_members")
-    .insert({
-      workspace_id: workspace.id,
-      profile_id: user.id,
-      role: "OWNER"
-    });
+  // 3. Add creator as OWNER member
+  try {
+    const { error: memberError } = await supabase
+      .from("workspace_members")
+      .insert({
+        workspace_id: workspace.id,
+        profile_id: user.id,
+        role: "OWNER"
+      });
 
-  if (memberError) {
-    console.error("Error creating workspace owner member:", memberError);
+    if (memberError) {
+      console.error("Error creating workspace owner member:", memberError);
+    }
+  } catch (mErr) {
+    console.warn("Workspace member insert notice:", mErr);
+  }
+
+  // 4. Provision a starter project for this workspace so tasks, canvas, documents are immediately usable
+  try {
+    const { data: existingProject } = await supabase
+      .from("projects")
+      .select("id")
+      .eq("workspace_id", workspace.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (!existingProject) {
+      await supabase.from("projects").insert({
+        workspace_id: workspace.id,
+        name: `${name} Project`,
+        description: `Primary development project stream for ${name}.`,
+        created_by: user.id,
+        status: "active"
+      });
+    }
+  } catch (projErr) {
+    console.warn("Could not create initial project for workspace:", projErr);
   }
 
   return workspace;

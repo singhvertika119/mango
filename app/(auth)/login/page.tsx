@@ -25,12 +25,18 @@ export default function LoginPage() {
 
     try {
       const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim(),
         password,
       });
 
       if (signInError) {
-        setError(signInError.message);
+        if (signInError.message.toLowerCase().includes("email not confirmed")) {
+          setError("Your email address has not been confirmed yet. Please check your inbox or spam folder for the confirmation link.");
+        } else if (signInError.message.toLowerCase().includes("invalid login credentials")) {
+          setError("Invalid email or password. Please verify your credentials and try again.");
+        } else {
+          setError(signInError.message);
+        }
       } else {
         router.refresh();
         router.push("/dashboard");
@@ -48,11 +54,11 @@ export default function LoginPage() {
         <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl pointer-events-none" />
         
         <CardHeader className="space-y-1 flex flex-col items-center text-center">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary text-primary-foreground font-bold shadow-md shadow-primary/20 mb-2">
-            W
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-400 text-white font-black shadow-md shadow-amber-500/20 mb-2">
+            m
           </div>
-          <CardTitle className="text-xl font-bold tracking-tight">Welcome to Workspace Agent</CardTitle>
-          <CardDescription>Enter your credentials to access your workspace</CardDescription>
+          <CardTitle className="text-xl font-bold tracking-tight">Welcome to Mango</CardTitle>
+          <CardDescription>Enter your credentials to access your developer workspace</CardDescription>
         </CardHeader>
         
         <form onSubmit={handleLogin}>
