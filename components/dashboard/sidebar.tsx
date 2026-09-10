@@ -164,6 +164,15 @@ export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCo
         console.warn("Could not retrieve user session:", err?.message);
       });
 
+    // Check if demo name is set in cookies
+    if (typeof document !== "undefined") {
+      const match = document.cookie.match(/mango-user-name=([^;]+)/);
+      if (match && match[1]) {
+        setFullName(decodeURIComponent(match[1]));
+        setUserEmail("developer@mango.dev");
+      }
+    }
+
     loadWorkspaces();
   }, [loadWorkspaces]);
 
@@ -273,7 +282,11 @@ export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCo
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {}
+    document.cookie = "sb-demo-auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    document.cookie = "mango-user-name=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     router.refresh();
     router.push("/login");
   };
