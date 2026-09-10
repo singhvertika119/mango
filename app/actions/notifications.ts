@@ -15,46 +15,11 @@ export interface Notification {
   created_at: string;
 }
 
-const isSupabaseConfigured = !!(
-  process.env.NEXT_PUBLIC_SUPABASE_URL &&
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
-// Offline mock state
-let mockNotifications: Notification[] = [
-  {
-    id: "mock-notif-1",
-    workspace_id: "mango-default-ws",
-    user_id: "mock-user-id",
-    title: "Project Initialized",
-    message: "Workspace Agent project was successfully synced with local repositories.",
-    type: "success",
-    is_read: false,
-    link: "/dashboard",
-    created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString()
-  },
-  {
-    id: "mock-notif-2",
-    workspace_id: "mango-default-ws",
-    user_id: "mock-user-id",
-    title: "Action Pending Approval",
-    message: "Agent requested permission to create_task for RLS audit.",
-    type: "approval",
-    is_read: false,
-    link: "/agent",
-    created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString()
-  }
-];
-
 export async function getNotificationsAction(workspaceId: string) {
-  if (!isSupabaseConfigured) {
-    return { success: true, notifications: mockNotifications };
-  }
-
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("Unauthorized");
+    if (!user) return { success: true, notifications: [] };
 
     const { data, error } = await supabase
       .from("notifications")
@@ -64,22 +29,18 @@ export async function getNotificationsAction(workspaceId: string) {
       .order("created_at", { ascending: false })
       .limit(20);
 
-    if (error) throw error;
-    return { success: true, notifications: data as Notification[] };
+    if (error) {
+      console.error("Error fetching notifications:", error.message);
+      return { success: true, notifications: [] };
+    }
+    return { success: true, notifications: (data as Notification[]) || [] };
   } catch (err: any) {
-    return { success: true, notifications: mockNotifications };
+    console.error("getNotificationsAction error:", err?.message);
+    return { success: true, notifications: [] };
   }
 }
 
 export async function markNotificationAsReadAction(notificationId: string) {
-  if (!isSupabaseConfigured) {
-    const notif = mockNotifications.find(n => n.id === notificationId);
-    if (notif) {
-      notif.is_read = true;
-    }
-    return { success: true };
-  }
-
   try {
     const supabase = await createClient();
     const { error } = await supabase
@@ -90,7 +51,7 @@ export async function markNotificationAsReadAction(notificationId: string) {
     if (error) throw error;
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err.message || "Failed to update notification status." };
+    return { success: false, error: err?.message || "Failed to update notification status." };
   }
 }
 
@@ -102,22 +63,6 @@ export async function createNotificationHelper(
   type: Notification["type"] = "info",
   link: string | null = null
 ) {
-  if (!isSupabaseConfigured) {
-    const notif: Notification = {
-      id: `mock-notif-${Date.now()}`,
-      workspace_id: workspaceId,
-      user_id: userId,
-      title,
-      message,
-      type,
-      is_read: false,
-      link,
-      created_at: new Date().toISOString()
-    };
-    mockNotifications.unshift(notif);
-    return;
-  }
-
   try {
     const supabase = await createClient();
     await supabase
@@ -130,7 +75,7 @@ export async function createNotificationHelper(
         type,
         link
       });
-  } catch (err) {
-    console.error("createNotificationHelper failed:", err);
+  } catch (err: any) {
+    console.error("createNotificationHelper failed:", err?.message);
   }
 }

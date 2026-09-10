@@ -82,14 +82,6 @@ function DashboardContent() {
       .catch((err: any) => {
         console.warn("Could not retrieve user in dashboard:", err?.message);
       });
-
-    if (typeof document !== "undefined") {
-      const match = document.cookie.match(/mango-user-name=([^;]+)/);
-      if (match && match[1]) {
-        const decoded = decodeURIComponent(match[1]);
-        setUserName(decoded.split(" ")[0]);
-      }
-    }
   }, []);
 
   const loadData = React.useCallback(async () => {

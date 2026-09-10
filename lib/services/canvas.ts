@@ -1,11 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { CanvasDocument, CanvasData } from "@/components/canvas/types";
 
-const isSupabaseConfigured = !!(
-  process.env.NEXT_PUBLIC_SUPABASE_URL &&
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
 export const defaultCanvasData: CanvasData = {
   nodes: [
     {
@@ -126,41 +121,7 @@ Key Technical Notes:
 All notes saved here are automatically synchronized with your workspace database in real time. You can export these notes as text or download the visual canvas diagrams anytime.
 `;
 
-// Global in-memory store for fallback/mock mode
-let mockCanvasDocuments: CanvasDocument[] = [
-  {
-    id: "default-canvas-1",
-    workspace_id: "mango-default-ws",
-    project_id: "mango-default-proj",
-    title: "System Architecture & Specs",
-    content: defaultNotesContent,
-    canvas_data: defaultCanvasData,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  }
-];
-
 export async function getCanvasDocuments(workspaceId: string, projectId: string): Promise<CanvasDocument[]> {
-  if (!isSupabaseConfigured) {
-    const filtered = mockCanvasDocuments.filter(d => d.workspace_id === workspaceId);
-    if (filtered.length === 0) {
-      // Auto create a starter canvas for the workspace
-      const starter: CanvasDocument = {
-        id: `canvas-${Date.now()}`,
-        workspace_id: workspaceId,
-        project_id: projectId,
-        title: "System Architecture & Specs",
-        content: defaultNotesContent,
-        canvas_data: defaultCanvasData,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      mockCanvasDocuments.push(starter);
-      return [starter];
-    }
-    return filtered;
-  }
-
   try {
     const supabase = await createClient();
     const { data, error } = await supabase
@@ -170,13 +131,14 @@ export async function getCanvasDocuments(workspaceId: string, projectId: string)
       .order("updated_at", { ascending: false });
 
     if (error) {
-      console.warn("Supabase getCanvasDocuments error, falling back to mock:", error.message);
-      return mockCanvasDocuments;
+      console.error("Supabase getCanvasDocuments error:", error.message);
+      return [];
     }
 
     if (!data || data.length === 0) {
-      // Create initial starter document
-      return [await createCanvasDocument(workspaceId, projectId, "System Architecture & Specs", defaultNotesContent, defaultCanvasData)];
+      // Create initial starter document in Supabase
+      const initial = await createCanvasDocument(workspaceId, projectId, "System Architecture & Specs", defaultNotesContent, defaultCanvasData);
+      return initial ? [initial] : [];
     }
 
     return data.map(d => ({
@@ -190,18 +152,13 @@ export async function getCanvasDocuments(workspaceId: string, projectId: string)
       created_at: d.created_at,
       updated_at: d.updated_at
     }));
-  } catch (err) {
-    console.error("Failed to getCanvasDocuments:", err);
-    return mockCanvasDocuments;
+  } catch (err: any) {
+    console.error("Failed to getCanvasDocuments:", err?.message);
+    return [];
   }
 }
 
 export async function getCanvasDocument(id: string): Promise<CanvasDocument | null> {
-  if (!isSupabaseConfigured) {
-    const doc = mockCanvasDocuments.find(d => d.id === id);
-    return doc || mockCanvasDocuments[0] || null;
-  }
-
   try {
     const supabase = await createClient();
     const { data, error } = await supabase
@@ -211,7 +168,7 @@ export async function getCanvasDocument(id: string): Promise<CanvasDocument | nu
       .maybeSingle();
 
     if (error || !data) {
-      return mockCanvasDocuments.find(d => d.id === id) || null;
+      return null;
     }
 
     return {
@@ -225,8 +182,9 @@ export async function getCanvasDocument(id: string): Promise<CanvasDocument | nu
       created_at: data.created_at,
       updated_at: data.updated_at
     };
-  } catch {
-    return mockCanvasDocuments.find(d => d.id === id) || null;
+  } catch (err: any) {
+    console.error("getCanvasDocument error:", err?.message);
+    return null;
   }
 }
 
@@ -237,21 +195,9 @@ export async function createCanvasDocument(
   content?: string,
   canvasData?: CanvasData
 ): Promise<CanvasDocument> {
-  const newDoc: CanvasDocument = {
-    id: `canvas-${Date.now()}`,
-    workspace_id: workspaceId,
-    project_id: projectId,
-    title: title || "Untitled Canvas",
-    content: content !== undefined ? content : defaultNotesContent,
-    canvas_data: canvasData || defaultCanvasData,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
-
-  if (!isSupabaseConfigured) {
-    mockCanvasDocuments.unshift(newDoc);
-    return newDoc;
-  }
+  const newDocTitle = title || "Untitled Canvas";
+  const newDocContent = content !== undefined ? content : defaultNotesContent;
+  const newDocCanvasData = canvasData || defaultCanvasData;
 
   try {
     const supabase = await createClient();
@@ -262,18 +208,17 @@ export async function createCanvasDocument(
       .insert({
         workspace_id: workspaceId,
         project_id: projectId,
-        title: newDoc.title,
-        content: newDoc.content,
-        canvas_data: newDoc.canvas_data,
+        title: newDocTitle,
+        content: newDocContent,
+        canvas_data: newDocCanvasData,
         created_by: user?.id || null
       })
       .select()
       .single();
 
-    if (error) {
-      console.warn("createCanvasDocument insert error, using in-memory:", error.message);
-      mockCanvasDocuments.unshift(newDoc);
-      return newDoc;
+    if (error || !data) {
+      console.error("createCanvasDocument insert error:", error?.message);
+      throw new Error(`Database error creating canvas document: ${error?.message}`);
     }
 
     return {
@@ -287,9 +232,9 @@ export async function createCanvasDocument(
       created_at: data.created_at,
       updated_at: data.updated_at
     };
-  } catch {
-    mockCanvasDocuments.unshift(newDoc);
-    return newDoc;
+  } catch (err: any) {
+    console.error("createCanvasDocument error:", err?.message);
+    throw err;
   }
 }
 
@@ -297,19 +242,6 @@ export async function updateCanvasDocument(
   id: string,
   updates: Partial<Pick<CanvasDocument, "title" | "content" | "canvas_data">>
 ): Promise<CanvasDocument | null> {
-  const idx = mockCanvasDocuments.findIndex(d => d.id === id);
-  if (idx !== -1) {
-    mockCanvasDocuments[idx] = {
-      ...mockCanvasDocuments[idx],
-      ...updates,
-      updated_at: new Date().toISOString()
-    };
-  }
-
-  if (!isSupabaseConfigured) {
-    return idx !== -1 ? mockCanvasDocuments[idx] : null;
-  }
-
   try {
     const supabase = await createClient();
     const { data, error } = await supabase
@@ -322,9 +254,9 @@ export async function updateCanvasDocument(
       .select()
       .single();
 
-    if (error) {
-      console.warn("updateCanvasDocument error, returning cached:", error.message);
-      return idx !== -1 ? mockCanvasDocuments[idx] : null;
+    if (error || !data) {
+      console.error("updateCanvasDocument error:", error?.message);
+      return null;
     }
 
     return {
@@ -338,16 +270,13 @@ export async function updateCanvasDocument(
       created_at: data.created_at,
       updated_at: data.updated_at
     };
-  } catch {
-    return idx !== -1 ? mockCanvasDocuments[idx] : null;
+  } catch (err: any) {
+    console.error("updateCanvasDocument error:", err?.message);
+    return null;
   }
 }
 
 export async function deleteCanvasDocument(id: string): Promise<boolean> {
-  mockCanvasDocuments = mockCanvasDocuments.filter(d => d.id !== id);
-
-  if (!isSupabaseConfigured) return true;
-
   try {
     const supabase = await createClient();
     const { error } = await supabase
@@ -355,7 +284,8 @@ export async function deleteCanvasDocument(id: string): Promise<boolean> {
       .delete()
       .eq("id", id);
     return !error;
-  } catch {
-    return true;
+  } catch (err: any) {
+    console.error("deleteCanvasDocument error:", err?.message);
+    return false;
   }
 }

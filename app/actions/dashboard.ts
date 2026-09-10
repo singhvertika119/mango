@@ -2,11 +2,6 @@
 
 import { createClient } from "@/lib/supabase/server";
 
-const isSupabaseConfigured = !!(
-  process.env.NEXT_PUBLIC_SUPABASE_URL &&
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
 export interface DashboardStats {
   totalTasks: number;
   completedTasks: number;
@@ -32,27 +27,6 @@ export interface DashboardDataResult {
 }
 
 export async function getDashboardDataAction(workspaceId: string): Promise<DashboardDataResult> {
-  if (!isSupabaseConfigured) {
-    // Return mock dynamic stats
-    return {
-      success: true,
-      stats: {
-        totalTasks: 6,
-        completedTasks: 3,
-        inProgressTasks: 2,
-        progressPercentage: 50,
-        documentsCount: 2,
-        githubConnected: true,
-        githubRepo: "singhvertika119/mango"
-      },
-      activities: [
-        { id: "act-1", message: "Approved and executed agent action: create_task 'Audit RLS policies'", user: "You", time: "10m ago" },
-        { id: "act-2", message: "Uploaded Mango_PRD.md to Knowledge Base", user: "You", time: "2h ago" },
-        { id: "act-3", message: "Initial commit parsed for project setup", user: "git-bot", time: "1d ago" }
-      ]
-    };
-  }
-
   try {
     const supabase = await createClient();
     
@@ -62,7 +36,9 @@ export async function getDashboardDataAction(workspaceId: string): Promise<Dashb
       .select("id, status")
       .eq("workspace_id", workspaceId);
       
-    if (tasksErr) throw tasksErr;
+    if (tasksErr) {
+      console.error("Error fetching tasks for dashboard:", tasksErr.message);
+    }
     
     const totalTasks = tasks?.length || 0;
     const completedTasks = tasks?.filter(t => t.status === "Completed" || t.status === "Review").length || 0;
@@ -75,7 +51,9 @@ export async function getDashboardDataAction(workspaceId: string): Promise<Dashb
       .select("*", { count: "exact", head: true })
       .eq("workspace_id", workspaceId);
 
-    if (docsErr) throw docsErr;
+    if (docsErr) {
+      console.error("Error fetching docs count for dashboard:", docsErr.message);
+    }
 
     // 3. Fetch GitHub Integration & Project status
     const { data: projectData } = await supabase
@@ -85,14 +63,12 @@ export async function getDashboardDataAction(workspaceId: string): Promise<Dashb
       .limit(1)
       .maybeSingle();
 
-    const { data: integration, error: intErr } = await supabase
+    const { data: integration } = await supabase
       .from("integrations")
       .select("settings")
       .eq("workspace_id", workspaceId)
       .eq("provider", "github")
       .maybeSingle();
-
-    if (intErr) throw intErr;
 
     // 4. Fetch Activities
     const { data: activities, error: actErr } = await supabase
@@ -110,9 +86,10 @@ export async function getDashboardDataAction(workspaceId: string): Promise<Dashb
       .order("created_at", { ascending: false })
       .limit(10);
 
-    if (actErr) throw actErr;
+    if (actErr) {
+      console.error("Error fetching activities for dashboard:", actErr.message);
+    }
 
-    // Helper to format timestamps to relative time strings (e.g. "5m ago")
     const formatRelativeTime = (isoString: string) => {
       const diffMs = Date.now() - new Date(isoString).getTime();
       const diffMins = Math.floor(diffMs / 60000);
@@ -125,7 +102,7 @@ export async function getDashboardDataAction(workspaceId: string): Promise<Dashb
     };
 
     const formattedActivities = (activities || []).map(act => {
-      const userName = (act.profiles as any)?.full_name || (act.profiles as any)?.email || "System";
+      const userName = (act.profiles as any)?.full_name || (act.profiles as any)?.email || "User";
       return {
         id: act.id,
         message: act.action,
@@ -151,22 +128,19 @@ export async function getDashboardDataAction(workspaceId: string): Promise<Dashb
       activities: formattedActivities
     };
   } catch (err: any) {
-    console.warn("Notice: Failed to load Supabase dashboard data, using fallback stats:", err.message);
+    console.error("getDashboardDataAction error:", err?.message);
     return {
       success: true,
       stats: {
-        totalTasks: 4,
-        completedTasks: 2,
-        inProgressTasks: 2,
-        progressPercentage: 50,
-        documentsCount: 2,
-        githubConnected: true,
-        githubRepo: "singhvertika119/mango"
+        totalTasks: 0,
+        completedTasks: 0,
+        inProgressTasks: 0,
+        progressPercentage: 0,
+        documentsCount: 0,
+        githubConnected: false,
+        githubRepo: "Not Connected"
       },
-      activities: [
-        { id: "act-1", message: "Activated Workspace Mango Sandbox", user: "You", time: "just now" },
-        { id: "act-2", message: "AI Agent Planner initialized", user: "Agent", time: "2m ago" }
-      ]
+      activities: []
     };
   }
 }
