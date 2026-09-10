@@ -10,12 +10,16 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       {/* Sidebar Navigation */}
-      <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
+      <React.Suspense fallback={<div className="w-64 border-r border-border bg-card/60 shrink-0" />}>
+        <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
+      </React.Suspense>
 
       {/* Main Content Area */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         {/* Top Header Bar */}
-        <Topbar />
+        <React.Suspense fallback={<div className="h-14 border-b border-border bg-card/60 shrink-0" />}>
+          <Topbar />
+        </React.Suspense>
 
         {/* Dynamic page content */}
         <main className="flex-1 overflow-y-auto bg-accent/20 p-6 relative">

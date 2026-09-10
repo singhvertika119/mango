@@ -11,6 +11,7 @@ import {
   BookOpen,
   MessageSquareCode,
   Puzzle,
+  Layers,
   Settings,
   ChevronsUpDown,
   Plus,
@@ -54,6 +55,7 @@ interface Workspace {
 const navigationItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Project Settings", href: "/projects", icon: Sliders },
+  { name: "Canvas & Docs", href: "/canvas", icon: Layers },
   { name: "Tasks", href: "/tasks", icon: CheckSquare },
   { name: "Knowledge", href: "/knowledge", icon: BookOpen },
   { name: "Agent Chat", href: "/agent", icon: MessageSquareCode },
@@ -103,17 +105,26 @@ export function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCo
   }, []);
 
   const loadWorkspaces = React.useCallback(async (selectId?: string) => {
+    const targetId = selectId || searchParams.get("workspaceId");
+    
+    // If workspaces are already loaded, just update the active selection without DB roundtrip
+    setWorkspaces((currentWorkspaces) => {
+      if (currentWorkspaces.length > 0) {
+        const matched = currentWorkspaces.find((w) => w.id === targetId) || currentWorkspaces[0];
+        setActiveWorkspace(matched);
+        return currentWorkspaces;
+      }
+      return currentWorkspaces;
+    });
+
     setLoading(true);
     const res = await getWorkspacesAction();
     if (res.success && res.workspaces) {
       setWorkspaces(res.workspaces);
       if (res.workspaces.length > 0) {
-        // Decide which workspace to activate
-        const targetId = selectId || searchParams.get("workspaceId") || res.workspaces[0].id;
         const matched = res.workspaces.find((w) => w.id === targetId) || res.workspaces[0];
         setActiveWorkspace(matched);
       } else {
-        // No workspaces found, auto-create a default workspace for seamless onboarding
         const autoCreate = await createWorkspaceAction("Mango Workspace");
         if (autoCreate.success && autoCreate.workspace) {
           setWorkspaces([autoCreate.workspace]);

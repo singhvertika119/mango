@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import {
@@ -35,7 +37,7 @@ import {
 } from "@/app/actions/project";
 import { Project, ProjectMember } from "@/lib/services/project";
 
-export default function ProjectSettingsPage() {
+function ProjectSettingsContent() {
   const searchParams = useSearchParams();
   const workspaceId = searchParams.get("workspaceId");
 
@@ -601,5 +603,13 @@ export default function ProjectSettingsPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+export default function ProjectSettingsPage() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground animate-pulse">Loading Project Settings...</div>}>
+      <ProjectSettingsContent />
+    </React.Suspense>
   );
 }

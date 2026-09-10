@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import * as React from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
@@ -44,7 +46,7 @@ interface Activity {
   time: string;
 }
 
-export default function DashboardPage() {
+function DashboardContent() {
   const searchParams = useSearchParams();
   const workspaceId = searchParams.get("workspaceId");
   const router = useRouter();
@@ -269,5 +271,13 @@ export default function DashboardPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground animate-pulse">Loading Workspace Dashboard...</div>}>
+      <DashboardContent />
+    </React.Suspense>
   );
 }

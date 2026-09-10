@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import {
@@ -27,7 +29,7 @@ import {
 } from "@/app/actions/agent";
 import { cn } from "@/lib/utils";
 
-export default function AgentPage() {
+function AgentContent() {
   const searchParams = useSearchParams();
   const workspaceId = searchParams.get("workspaceId");
 
@@ -385,5 +387,13 @@ export default function AgentPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function AgentPage() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground animate-pulse">Loading Agent Chat...</div>}>
+      <AgentContent />
+    </React.Suspense>
   );
 }

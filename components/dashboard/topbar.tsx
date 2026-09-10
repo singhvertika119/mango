@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { Bell, Search, Sparkles, Sun, Moon, Check, Inbox, CheckCircle2, AlertTriangle, AlertCircle, Info, ArrowRight, FileText, CheckSquare, LayoutDashboard, FolderKanban, BookOpen, MessageSquareCode, Settings, Puzzle, Loader2, ChevronDown } from "lucide-react";
+import { Bell, Search, Sparkles, Sun, Moon, Check, Inbox, CheckCircle2, AlertTriangle, AlertCircle, Info, ArrowRight, FileText, CheckSquare, LayoutDashboard, FolderKanban, BookOpen, MessageSquareCode, Settings, Puzzle, Loader2, ChevronDown, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
@@ -157,6 +157,7 @@ export function Topbar() {
   const defaultNavs = [
     { name: "Go to Dashboard", href: `/dashboard?workspaceId=${workspaceId}`, icon: LayoutDashboard },
     { name: "Go to Project Settings", href: `/projects?workspaceId=${workspaceId}`, icon: FolderKanban },
+    { name: "Go to Canvas & Docs", href: `/canvas?workspaceId=${workspaceId}`, icon: Layers },
     { name: "Go to Tasks", href: `/tasks?workspaceId=${workspaceId}`, icon: CheckSquare },
     { name: "Go to Knowledge Base", href: `/knowledge?workspaceId=${workspaceId}`, icon: BookOpen },
     { name: "Go to Agent Console", href: `/agent?workspaceId=${workspaceId}`, icon: MessageSquareCode },
@@ -179,10 +180,38 @@ export function Topbar() {
 
   React.useEffect(() => {
     loadNotifications();
-    // Poll notifications every 10 seconds for real-time responsiveness
-    const interval = setInterval(loadNotifications, 10000);
-    return () => clearInterval(interval);
-  }, [loadNotifications]);
+
+    if (!workspaceId) return;
+
+    // 1. Supabase Realtime WebSockets: instant updates with ZERO polling queries
+    const channel = supabase
+      .channel(`notifications:${workspaceId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `workspace_id=eq.${workspaceId}`
+        },
+        () => {
+          loadNotifications();
+        }
+      )
+      .subscribe();
+
+    // 2. Slow fallback refresh ONLY when the tab is actively visible (every 2 minutes)
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        loadNotifications();
+      }
+    }, 120000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(interval);
+    };
+  }, [workspaceId, loadNotifications, supabase]);
 
   // Click outside to close dropdown
   React.useEffect(() => {
@@ -213,19 +242,6 @@ export function Topbar() {
     await Promise.all(unread.map(n => markNotificationAsReadAction(n.id)));
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
   };
-
-  React.useEffect(() => {
-    if (workspaceId) {
-      supabase
-        .from("workspaces")
-        .select("name")
-        .eq("id", workspaceId)
-        .single()
-        .then(({ data }) => {
-          if (data) setWorkspaceName(data.name);
-        });
-    }
-  }, [workspaceId, supabase]);
 
   const toggleTheme = () => {
     const nextTheme = theme === "light" ? "dark" : "light";

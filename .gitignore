@@ -45,3 +45,8 @@ Mango_PRD.md
 Mango_IMPLEMENTATION_PLAN.md
 CLAUDE.md
 AGENTS.md
+
+# sst & open-next
+.sst
+.open-next
+sst-env.d.ts

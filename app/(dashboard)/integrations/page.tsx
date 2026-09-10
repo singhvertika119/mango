@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import {
@@ -32,7 +34,7 @@ const isSupabaseConfigured = !!(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-export default function IntegrationsPage() {
+function IntegrationsContent() {
   const searchParams = useSearchParams();
   const workspaceId = searchParams.get("workspaceId");
 
@@ -427,6 +429,14 @@ export default function IntegrationsPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function IntegrationsPage() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground animate-pulse">Loading Integrations...</div>}>
+      <IntegrationsContent />
+    </React.Suspense>
   );
 }
 

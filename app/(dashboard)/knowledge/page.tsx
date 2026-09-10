@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import {
@@ -64,7 +66,7 @@ interface CodeSnippet {
   language: string;
 }
 
-export default function KnowledgePage() {
+function KnowledgeContent() {
   const searchParams = useSearchParams();
   const workspaceId = searchParams.get("workspaceId");
 
@@ -696,5 +698,13 @@ export default function KnowledgePage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function KnowledgePage() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground animate-pulse">Loading Knowledge Base...</div>}>
+      <KnowledgeContent />
+    </React.Suspense>
   );
 }

@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import {
@@ -47,7 +49,7 @@ const columns: { name: Task["status"]; color: string }[] = [
   { name: "Blocked", color: "bg-rose-500/10 text-rose-600 dark:text-rose-400" }
 ];
 
-export default function TasksPage() {
+function TasksContent() {
   const searchParams = useSearchParams();
   const workspaceId = searchParams.get("workspaceId");
 
@@ -387,5 +389,13 @@ export default function TasksPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function TasksPage() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-xs text-muted-foreground animate-pulse">Loading Tasks Board...</div>}>
+      <TasksContent />
+    </React.Suspense>
   );
 }

@@ -8,58 +8,92 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  const pathname = request.nextUrl.pathname;
+
+  // 1. Skip proxy auth check for static assets, public auth callbacks, and Server Actions (which have their own auth guards)
+  if (
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/api/auth") ||
+    pathname.includes(".") ||
+    request.headers.get("next-action")
+  ) {
     return response;
   }
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          );
-        },
-      },
-    }
+  const allCookies = request.cookies.getAll();
+  const hasAuthCookie = allCookies.some(
+    (c) => c.name.includes("auth-token") || c.name.startsWith("sb-")
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const isAuthPage = request.nextUrl.pathname.startsWith("/login") || request.nextUrl.pathname.startsWith("/signup");
+  const isAuthPage = pathname.startsWith("/login") || pathname.startsWith("/signup");
   const isDashboardPage =
-    request.nextUrl.pathname === "/" ||
-    request.nextUrl.pathname.startsWith("/dashboard") ||
-    request.nextUrl.pathname.startsWith("/projects") ||
-    request.nextUrl.pathname.startsWith("/tasks") ||
-    request.nextUrl.pathname.startsWith("/knowledge") ||
-    request.nextUrl.pathname.startsWith("/agent") ||
-    request.nextUrl.pathname.startsWith("/integrations") ||
-    request.nextUrl.pathname.startsWith("/settings");
+    pathname === "/" ||
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/projects") ||
+    pathname.startsWith("/tasks") ||
+    pathname.startsWith("/knowledge") ||
+    pathname.startsWith("/agent") ||
+    pathname.startsWith("/canvas") ||
+    pathname.startsWith("/integrations") ||
+    pathname.startsWith("/settings");
 
-  if (!user && isDashboardPage) {
+  // Fast path: If on dashboard route and no auth cookies exist, redirect to /login immediately without network delay
+  if (!hasAuthCookie && isDashboardPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
-  if (user && isAuthPage) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
+  // Fast path: If on auth page and no auth cookie, allow immediately
+  if (!hasAuthCookie && isAuthPage) {
+    return response;
+  }
+
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return response;
+  }
+
+  try {
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll();
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+            response = NextResponse.next({
+              request: {
+                headers: request.headers,
+              },
+            });
+            cookiesToSet.forEach(({ name, value, options }) =>
+              response.cookies.set(name, value, options)
+            );
+          },
+        },
+      }
+    );
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user && isDashboardPage) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      return NextResponse.redirect(url);
+    }
+
+    if (user && isAuthPage) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/dashboard";
+      return NextResponse.redirect(url);
+    }
+  } catch (err) {
+    console.warn("Proxy auth check error:", err);
   }
 
   return response;

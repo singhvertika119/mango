@@ -246,7 +246,7 @@ export async function getProjectMembers(projectId: string): Promise<ProjectMembe
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("project_members")
-    .select("*, profile:profiles(id, email, full_name, avatar_url)")
+    .select("*, profile:profiles!project_members_profile_id_fkey(id, email, full_name, avatar_url)")
     .eq("project_id", projectId)
     .order("created_at", { ascending: true });
 
